@@ -8,3 +8,4 @@ beautifulsoup4
 Pillow
 python-dotenv
 markdown2
+groq
