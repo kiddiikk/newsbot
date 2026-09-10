@@ -72,7 +72,7 @@ class AIProcessor:
 
 
             clean_content = clean_rss_content(entry['content'])
-            user_prompt = f"Переработай эту новость в пост для Telegram (700-900 символов): Title: {entry['title']}. Content: {clean_content[:700]}"
+            user_prompt = f"ПЕРЕВЕДИ ЭТУ НОВОСТЬ НА РУССКИЙ ЯЗЫК И переработай в пост для Telegram (700-900 символов): Title: {entry['title']}. Content: {clean_content[:700]}"
 
             logger.info(f"Запрос к Groq API для обработки контента. Модель: {model}, Тема: {topic}")
             logger.debug(f"System prompt (первые 100 символов): {sys_prompt[:100]}...")
@@ -441,6 +441,7 @@ class AIProcessor:
     def _default_prompt() -> str:
 
         return (
+            "ОБЯЗАТЕЛЬНО: переведи новость на русский язык, если она на другом языке. "
             "Ты — профессиональный редактор русскоязычного Telegram-канала. "
             "Твоя задача — переработать новость в привлекательный пост для Telegram.\n\n"
             "ИНСТРУКЦИИ ПО ФОРМАТИРОВАНИЮ (СТРОГО СЛЕДУЙ ЭТИМ ПРАВИЛАМ):\n"
