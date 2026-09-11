@@ -137,7 +137,8 @@ class AIProcessor:
                         {"role": "user", "content": user_prompt}
                     ],
                     temperature=0.4,
-                    max_tokens=1200,
+                    max_tokens=4000,
+                    reasoning_effort="low",
                     top_p=0.9,
                     timeout=45
                 ))
