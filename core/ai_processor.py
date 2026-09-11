@@ -36,7 +36,7 @@ def md_to_html(text: str) -> str:
 class AIProcessor:
 
 
-    SAFE_MODEL = "llama-3.1-8b-instant"
+    SAFE_MODEL = "openai/gpt-oss-20b"
     SUPPORTED_MODELS = set(GROQ_MODELS + ["gpt-4o-mini", "gpt-4"])
 
     def __init__(self) -> None:
