@@ -1,6 +1,7 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from typing import List, Optional
 from database.models import Post, RSSSource
+from config.settings import AI_MODELS
 
 
 
