@@ -21,3 +21,4 @@ GROQ_MODELS = [
     "meta-llama/llama-4-scout-17b-16e-instruct"
 ]
 DEFAULT_AI_MODEL = "llama-3.1-8b-instant"
+AI_MODELS = GROQ_MODELS
