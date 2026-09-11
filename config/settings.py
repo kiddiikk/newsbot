@@ -14,11 +14,8 @@ DEFAULT_POST_INTERVAL = 7200
 MAX_QUEUE_SIZE = 50
 
 GROQ_MODELS = [
-    "llama-3.3-70b-versatile",
-    "llama-3.1-8b-instant",
-    "qwen/qwen3-32b",
-    "mistral-saba-24b",
-    "meta-llama/llama-4-scout-17b-16e-instruct"
+    "openai/gpt-oss-120b",
+    "openai/gpt-oss-20b",
 ]
-DEFAULT_AI_MODEL = "llama-3.1-8b-instant"
+DEFAULT_AI_MODEL = "openai/gpt-oss-120b"
 AI_MODELS = GROQ_MODELS
