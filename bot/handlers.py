@@ -343,12 +343,24 @@ async def process_manual_rss(message: Message, state: FSMContext):
     if feed.entries:
         db = SessionLocal()
         title = feed.feed.get('title', formatted_url[:50])
-        add_rss_source(db, channel_id, formatted_url, title)
+
+        # 👇 ОПРЕДЕЛЯЕМ ТИП ИСТОЧНИКА
+        fun_domains = [
+            "reddit.com/r/ChatGPTPromptGenius",
+            "reddit.com/r/PromptEngineering",
+            "reddit.com/r/ChatGPT",
+            "reddit.com/r/weirdGPT",
+            "reddit.com/r/artificial",
+        ]
+        source_type = "fun" if any(d in formatted_url for d in fun_domains) else "news"
+
+        add_rss_source(db, channel_id, formatted_url, title, source_type)
         sources = db.query(RSSSource).filter_by(channel_id=channel_id).all()
         db.close()
 
+        type_label = "🎉 Развлекательный" if source_type == "fun" else "📰 Новостной"
         await message.answer(
-            f"✅ RSS источник '{title}' успешно добавлен!",
+            f"✅ RSS источник '{title}' добавлен как {type_label}!",
             reply_markup=keyboards.rss_sources_menu(channel_id, sources)
         )
     else:
@@ -357,7 +369,6 @@ async def process_manual_rss(message: Message, state: FSMContext):
         )
 
     await state.clear()
-
 
 @router.callback_query(F.data.startswith("create_"))
 async def create_post_start(callback: CallbackQuery, bot: Bot):
