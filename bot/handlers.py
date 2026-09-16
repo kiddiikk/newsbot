@@ -384,50 +384,57 @@ async def create_post_start(callback: CallbackQuery, bot: Bot):
         ai_processor = AIProcessor()
         publisher = Publisher(bot)
 
-                   # Ключевые слова для фильтрации (AI-тематика)
-            AI_KEYWORDS = [
-                'ai', 'ии', 'нейросет', 'нейронн', 'gpt', 'llm', 'chatgpt', 'midjourney',
-                'искусственн', 'машинн', 'промпт', 'deepmind', 'openai', 'anthropic',
-                'hugging face', 'gemini', 'claude', 'machine learning', 'deep learning',
-                'нейро', 'generative', 'генеративн', 'модель', 'model', 'artificial intelligence',
-                'chatbot', 'чат-бот', 'нейросеть', 'diffusion', 'диффузи', 'stable diffusion',
-                'copilot', 'mistral', 'llama', 'transformer', 'трансформер'
+        publisher = Publisher(bot)
+
+        # Ключевые слова для фильтрации (AI-тематика)
+        AI_KEYWORDS = [
+            'ai', 'ии', 'нейросет', 'нейронн', 'gpt', 'llm', 'chatgpt', 'midjourney',
+            'искусственн', 'машинн', 'промпт', 'deepmind', 'openai', 'anthropic',
+            'hugging face', 'gemini', 'claude', 'machine learning', 'deep learning',
+            'нейро', 'generative', 'генеративн', 'модель', 'model', 'artificial intelligence',
+            'chatbot', 'чат-бот', 'нейросеть', 'diffusion', 'диффузи', 'stable diffusion',
+            'copilot', 'mistral', 'llama', 'transformer', 'трансформер'
+        ]
+
+        def is_ai_related(title: str, content: str) -> bool:
+            """Проверяет, относится ли новость к AI-тематике"""
+            text = (title + ' ' + content).lower()
+            return any(keyword in text for keyword in AI_KEYWORDS)
+
+        parser = RSSParser()
+        async with parser:
+            all_entries = []
+            for source in sources:
+                entries = await parser.parse_feed(source.url)
+                if entries:
+                    all_entries.extend(entries[:3])
+
+            # ФИЛЬТРАЦИЯ: оставляем только AI-новости
+            ai_entries = [
+                entry for entry in all_entries
+                if is_ai_related(entry.get('title', ''), entry.get('content', ''))
             ]
 
-            def is_ai_related(title: str, content: str) -> bool:
-                """Проверяет, относится ли новость к AI-тематике"""
-                text = (title + ' ' + content).lower()
-                return any(keyword in text for keyword in AI_KEYWORDS)
+            logger.info(f"Всего новостей: {len(all_entries)}, после фильтра AI: {len(ai_entries)}")
 
-            parser = RSSParser()
-            async with parser:
-                all_entries = []
-                for source in sources:
-                    entries = await parser.parse_feed(source.url)
-                    if entries:
-                        all_entries.extend(entries[:3])
+            if not ai_entries:
+                await msg.edit_text("❌ Не найдено AI-новостей. Попробуйте позже или добавьте другие источники.")
+                db.close()
+                return
 
-                # ФИЛЬТРАЦИЯ: оставляем только AI-новости
-                ai_entries = [
-                    entry for entry in all_entries
-                    if is_ai_related(entry.get('title', ''), entry.get('content', ''))
-                ]
+            all_entries = ai_entries
 
-                logger.info(f"Всего новостей: {len(all_entries)}, после фильтра AI: {len(ai_entries)}")
+            await msg.edit_text("🧠 Обрабатываю новость с помощью AI...")
+            entry = random.choice(all_entries)
 
-                if not ai_entries:
-                    await msg.edit_text("❌ Не найдено AI-новостей. Попробуйте позже или добавьте другие источники.")
-                    db.close()
-                    return
-
-                all_entries = ai_entries  # заменяем на отфильтрованные
-
-                await msg.edit_text("🧠 Обрабатываю новость с помощью AI...")
-                entry = random.choice(all_entries)
-
-                processed_content = await ai_processor.process_content(
-                    entry,
-                    {
+            processed_content = await ai_processor.process_content(
+                entry,
+                {
+                    'ai_model': channel.ai_model,
+                    'ai_prompt': channel.ai_prompt,
+                    'topic': channel.topic
+                }
+            )
                         'ai_model': channel.ai_model,
                         'ai_prompt': channel.ai_prompt,
                         'topic': channel.topic
