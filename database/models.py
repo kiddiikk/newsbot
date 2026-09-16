@@ -49,7 +49,7 @@ class RSSSource(Base):
     last_guid = Column(String)
     error_count = Column(Integer, default=0)
     channel = relationship("Channel", back_populates="rss_sources")
-
+    source_type = Column(String, default="news")  # "news" или "fun"
 
 class Post(Base):
     __tablename__ = "posts"
