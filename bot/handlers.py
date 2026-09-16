@@ -434,12 +434,6 @@ async def create_post_start(callback: CallbackQuery, bot: Bot):
                     'ai_prompt': channel.ai_prompt,
                     'topic': channel.topic
                 }
-            )
-                        'ai_model': channel.ai_model,
-                        'ai_prompt': channel.ai_prompt,
-                        'topic': channel.topic
-                    }
-                )
 
             media_urls = entry.get('media', [])
 
