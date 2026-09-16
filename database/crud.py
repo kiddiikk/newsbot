@@ -40,11 +40,12 @@ def get_user_channels(db: Session, user_id: int):
     return db.query(Channel).filter(Channel.owner_id == user_id).all()
 
 
-def add_rss_source(db: Session, channel_id: int, url: str, name: str):
+def add_rss_source(db: Session, channel_id: int, url: str, name: str, source_type: str = "news"):
     source = RSSSource(
         url=url,
         name=name,
-        channel_id=channel_id
+        channel_id=channel_id,
+        source_type=source_type
     )
     db.add(source)
     db.commit()
