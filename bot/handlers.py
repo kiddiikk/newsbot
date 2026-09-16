@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 import random
 import logging
 
-logger = logging.getLogger(__name__)/
+logger = logging.getLogger(__name__)
 
 router = Router()
 keyboards = Keyboards()
