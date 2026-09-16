@@ -12,6 +12,9 @@ from core.ai_processor import AIProcessor
 from config.settings import ADMIN_IDS
 from datetime import datetime, timedelta
 import random
+import logging
+
+logger = logging.getLogger(__name__)/
 
 router = Router()
 keyboards = Keyboards()
@@ -381,30 +384,55 @@ async def create_post_start(callback: CallbackQuery, bot: Bot):
         ai_processor = AIProcessor()
         publisher = Publisher(bot)
 
-        parser = RSSParser()
-        async with parser:
-            all_entries = []
-            for source in sources:
-                entries = await parser.parse_feed(source.url)
-                if entries:
-                    all_entries.extend(entries[:3])
+                   # Ключевые слова для фильтрации (AI-тематика)
+            AI_KEYWORDS = [
+                'ai', 'ии', 'нейросет', 'нейронн', 'gpt', 'llm', 'chatgpt', 'midjourney',
+                'искусственн', 'машинн', 'промпт', 'deepmind', 'openai', 'anthropic',
+                'hugging face', 'gemini', 'claude', 'machine learning', 'deep learning',
+                'нейро', 'generative', 'генеративн', 'модель', 'model', 'artificial intelligence',
+                'chatbot', 'чат-бот', 'нейросеть', 'diffusion', 'диффузи', 'stable diffusion',
+                'copilot', 'mistral', 'llama', 'transformer', 'трансформер'
+            ]
 
-            if not all_entries:
-                await msg.edit_text("❌ Не найдено новых новостей в источниках.")
-                db.close()
-                return
+            def is_ai_related(title: str, content: str) -> bool:
+                """Проверяет, относится ли новость к AI-тематике"""
+                text = (title + ' ' + content).lower()
+                return any(keyword in text for keyword in AI_KEYWORDS)
 
-            await msg.edit_text("🧠 Обрабатываю новость с помощью AI...")
-            entry = random.choice(all_entries)
+            parser = RSSParser()
+            async with parser:
+                all_entries = []
+                for source in sources:
+                    entries = await parser.parse_feed(source.url)
+                    if entries:
+                        all_entries.extend(entries[:3])
 
-            processed_content = await ai_processor.process_content(
-                entry,
-                {
-                    'ai_model': channel.ai_model,
-                    'ai_prompt': channel.ai_prompt,
-                    'topic': channel.topic
-                }
-            )
+                # ФИЛЬТРАЦИЯ: оставляем только AI-новости
+                ai_entries = [
+                    entry for entry in all_entries
+                    if is_ai_related(entry.get('title', ''), entry.get('content', ''))
+                ]
+
+                logger.info(f"Всего новостей: {len(all_entries)}, после фильтра AI: {len(ai_entries)}")
+
+                if not ai_entries:
+                    await msg.edit_text("❌ Не найдено AI-новостей. Попробуйте позже или добавьте другие источники.")
+                    db.close()
+                    return
+
+                all_entries = ai_entries  # заменяем на отфильтрованные
+
+                await msg.edit_text("🧠 Обрабатываю новость с помощью AI...")
+                entry = random.choice(all_entries)
+
+                processed_content = await ai_processor.process_content(
+                    entry,
+                    {
+                        'ai_model': channel.ai_model,
+                        'ai_prompt': channel.ai_prompt,
+                        'topic': channel.topic
+                    }
+                )
 
             media_urls = entry.get('media', [])
 
