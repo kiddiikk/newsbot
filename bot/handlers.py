@@ -395,9 +395,25 @@ async def create_post_start(callback: CallbackQuery, bot: Bot):
         ai_processor = AIProcessor()
         publisher = Publisher(bot)
 
-        publisher = Publisher(bot)
+        # 👇 СЧЕТЧИК ЧЕРЕДОВАНИЯ
+        settings = channel.settings or {}
+        post_counter = settings.get("post_counter", 0)
+        use_fun = post_counter >= 3  # каждые 3 поста — развлекательный
 
-        # Ключевые слова для фильтрации (AI-тематика)
+        # Разделяем источники
+        fun_sources = [s for s in sources if getattr(s, 'source_type', 'news') == "fun"]
+        news_sources = [s for s in sources if getattr(s, 'source_type', 'news') != "fun"]
+
+        if use_fun and fun_sources:
+            active_sources = fun_sources
+            is_fun_post = True
+        else:
+            active_sources = news_sources if news_sources else sources
+            is_fun_post = False
+
+        logger.info(f"Счетчик: {post_counter}, развлекательный: {is_fun_post}, источников: {len(active_sources)}")
+
+        # Ключевые слова для AI-фильтрации
         AI_KEYWORDS = [
             'ai', 'ии', 'нейросет', 'нейронн', 'gpt', 'llm', 'chatgpt', 'midjourney',
             'искусственн', 'машинн', 'промпт', 'deepmind', 'openai', 'anthropic',
@@ -408,73 +424,97 @@ async def create_post_start(callback: CallbackQuery, bot: Bot):
         ]
 
         def is_ai_related(title: str, content: str) -> bool:
-            """Проверяет, относится ли новость к AI-тематике"""
             text = (title + ' ' + content).lower()
             return any(keyword in text for keyword in AI_KEYWORDS)
 
         parser = RSSParser()
         async with parser:
             all_entries = []
-            for source in sources:
+            for source in active_sources:
                 entries = await parser.parse_feed(source.url)
                 if entries:
                     all_entries.extend(entries[:3])
 
-            # ФИЛЬТРАЦИЯ: оставляем только AI-новости
-            ai_entries = [
-                entry for entry in all_entries
-                if is_ai_related(entry.get('title', ''), entry.get('content', ''))
-            ]
+            # Фильтр только для новостных
+            if not is_fun_post:
+                all_entries = [
+                    e for e in all_entries
+                    if is_ai_related(e.get('title', ''), e.get('content', ''))
+                ]
 
-            logger.info(f"Всего новостей: {len(all_entries)}, после фильтра AI: {len(ai_entries)}")
+            logger.info(f"Всего новостей после фильтра: {len(all_entries)}")
 
-            if not ai_entries:
-                await msg.edit_text("❌ Не найдено AI-новостей. Попробуйте позже или добавьте другие источники.")
+            if not all_entries:
+                await msg.edit_text("❌ Не найдено новых постов. Попробуйте позже.")
                 db.close()
                 return
 
-            all_entries = ai_entries
-
-            await msg.edit_text("🧠 Обрабатываю новость с помощью AI...")
+            await msg.edit_text("🧠 Обрабатываю...")
             entry = random.choice(all_entries)
+
+            # 👇 РАЗНЫЕ ПРОМПТЫ
+            if is_fun_post:
+                custom_prompt = (
+                    "Ты — редактор Telegram-канала про ИИ. Вот пост с Reddit про промпты или фишки ИИ.\n\n"
+                    "ЗАДАЧА: переведи суть на русский и оформи как короткий пост.\n\n"
+                    "ПРАВИЛА:\n"
+                    "1. Длина: 400-500 символов.\n"
+                    "2. Заголовок с эмодзи.\n"
+                    "3. Если это промпт — оформи его в цитату (используй <code>...</code>).\n"
+                    "4. В конце — 2 хештега (#промпты #AI).\n"
+                    "5. Стиль: живой, как объясняешь другу."
+                )
+            else:
+                custom_prompt = channel.ai_prompt
 
             processed_content = await ai_processor.process_content(
                 entry,
                 {
                     'ai_model': channel.ai_model,
-                    'ai_prompt': channel.ai_prompt,
+                    'ai_prompt': custom_prompt,
                     'topic': channel.topic
                 }
             )
 
-            media_urls = entry.get('media', [])
+        media_urls = entry.get('media', [])
 
-            await msg.edit_text("✅ Готово! Публикую пост в канал...")
-            message_id = await publisher.publish_post(
-                channel.channel_id,
-                processed_content,
-                media_urls
+        await msg.edit_text("✅ Публикую...")
+        message_id = await publisher.publish_post(
+            channel.channel_id,
+            processed_content,
+            media_urls
+        )
+
+        if message_id:
+            new_post = create_post(
+                db, channel_id, active_sources[0].url,
+                entry['title'], entry['content'],
+                processed_content, media_urls,
+                datetime.utcnow()
+            )
+            if new_post:
+                update_post_status(db, new_post.id, "published", message_id)
+
+            # 👇 ОБНОВЛЯЕМ СЧЕТЧИК
+            if is_fun_post:
+                settings["post_counter"] = 0
+            else:
+                settings["post_counter"] = post_counter + 1
+            channel.settings = settings
+            db.commit()
+
+            type_label = "🎉 Развлекательный" if is_fun_post else "📰 Новостной"
+            await msg.edit_text(
+                f"✅ {type_label} пост опубликован! (счетчик: {settings['post_counter']}/3)",
+                reply_markup=keyboards.channel_menu(channel_id)
+            )
+        else:
+            await msg.edit_text(
+                f"❌ Ошибка публикации. Проверьте, что бот админ канала {channel.channel_name}."
             )
 
-            if message_id:
-                new_post = create_post(
-                    db, channel_id, sources[0].url,
-                    entry['title'], entry['content'],
-                    processed_content, media_urls,
-                    datetime.utcnow()
-                )
-                if new_post:  # Проверяем, не дубль ли
-                    update_post_status(db, new_post.id, "published", message_id)
-                await msg.edit_text(
-                    "✅ Пост успешно опубликован!",
-                    reply_markup=keyboards.channel_menu(channel_id)
-                )
-            else:
-                await msg.edit_text(
-                    f"❌ Ошибка при публикации поста в Telegram. Убедитесь, что бот является администратором в канале {channel.channel_name}.")
-
     except Exception as e:
-        await msg.edit_text(f"❌ Произошла ошибка: {str(e)[:100]}")
+        await msg.edit_text(f"❌ Ошибка: {str(e)[:100]}")
     finally:
         db.close()
 
