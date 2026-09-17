@@ -45,9 +45,6 @@ class RSSParser:
             content = self.extract_content(entry)
             media = self.extract_media(entry)
 
-            if not media:
-                return None
-
             return {
                 'guid': entry.get('id', entry.get('link', '')),
                 'title': entry.get('title', 'No title'),
