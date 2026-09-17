@@ -101,11 +101,6 @@ class Scheduler:
 
         for entry in entries[:2]:
             try:
-
-                if not entry.get('media'):
-                    logger.warning(f"Запись '{entry.get('title', '')}' пропущена: нет медиа")
-                    continue
-
                 logger.info(f"Обработка записи: {entry.get('title', '')}")
 
                 # обработка контента с помощью AI
