@@ -248,12 +248,12 @@ class Scheduler:
     async def check_expired_access(self):
         """Уведомляет клиентов об окончании пробного периода"""
         from config.settings import ADMIN_IDS
+        from database.models import Channel
 
         logger.info("=== ПРОВЕРКА ИСТЁКШИХ ПРОБНЫХ ПЕРИОДОВ ===")
         db = SessionLocal()
         try:
             now = datetime.utcnow()
-            from database.models import Channel
 
             expired_trials = db.query(Channel).filter(
                 Channel.trial_until < now,
