@@ -22,6 +22,16 @@ class Scheduler:
         self.ai_processor = AIProcessor()
         logger.info("Scheduler инициализирован")
 
+    def _moderation_keyboard(self, post_id: int):
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        keyboard = [
+            [
+                InlineKeyboardButton(text="✅ Опубликовать", callback_data=f"approve_{post_id}"),
+                InlineKeyboardButton(text="❌ Отклонить", callback_data=f"reject_{post_id}")
+            ]
+        ]
+        return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
     def start(self):
         logger.info("Запуск планировщика задач")
 
@@ -208,9 +218,21 @@ class Scheduler:
                     logger.info(f"Публикация поста ID {post.id} в канал {channel.channel_name}")
 
                     if channel.moderation_mode:
-                        logger.info(
-                            f"Канал {channel.channel_name} в режиме модерации, пост {post.id} отправлен на модерацию")
+                        logger.info(f"Канал {channel.channel_name} в режиме модерации, отправляю пост {post.id} владельцу")
                         update_post_status(db, post.id, "moderation")
+
+                        # 👇 ОТПРАВЛЯЕМ ПОСТ ВЛАДЕЛЬЦУ НА ПРОВЕРКУ
+                        try:
+                            await self.bot.send_message(
+                                channel.owner.telegram_id,
+                                f"📝 <b>Пост на модерацию</b>\n\n"
+                                f"Канал: <b>{channel.channel_name}</b>\n\n"
+                                f"{post.processed_content}",
+                                parse_mode="HTML",
+                                reply_markup=self._moderation_keyboard(post.id)
+                            )
+                        except Exception as e:
+                            logger.error(f"Не удалось отправить пост на модерацию: {e}")
                         continue
 
                     message_id = await self.publisher.publish_post(
