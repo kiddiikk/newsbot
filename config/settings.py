@@ -19,3 +19,8 @@ GROQ_MODELS = [
 ]
 DEFAULT_AI_MODEL = "openai/gpt-oss-120b"
 AI_MODELS = GROQ_MODELS
+SUBSCRIPTION_PRICES = {
+    "start": 300,
+    "pro": 700,
+    "business": 1500,
+}
