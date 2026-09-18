@@ -789,3 +789,75 @@ async def toggle_moderation(callback: CallbackQuery):
         await callback.answer(f"Режим модерации {mode_text}")
         await ai_settings_menu(callback)
     db.close()
+# ============================================================
+# ОПЛАТА ПОДПИСКИ ЧЕРЕЗ TELEGRAM STARS
+# ============================================================
+
+@router.callback_query(F.data == "subscribe")
+async def subscribe_menu(callback: CallbackQuery):
+    from config.settings import SUBSCRIPTION_PRICES
+    keyboard = [
+        [InlineKeyboardButton(
+            text=f"🚀 Старт — {SUBSCRIPTION_PRICES['start']} ⭐",
+            callback_data="pay_start"
+        )],
+        [InlineKeyboardButton(
+            text=f"💎 Про — {SUBSCRIPTION_PRICES['pro']} ⭐",
+            callback_data="pay_pro"
+        )],
+        [InlineKeyboardButton(
+            text=f"🏢 Бизнес — {SUBSCRIPTION_PRICES['business']} ⭐",
+            callback_data="pay_business"
+        )],
+        [InlineKeyboardButton(text="◀️ Назад", callback_data="back_main")]
+    ]
+    await callback.message.edit_text(
+        "💎 Выберите тариф подписки:\n\n"
+        "🚀 Старт — 1 канал, 10 постов/день\n"
+        "💎 Про — 3 канала, безлимит постов\n"
+        "🏢 Бизнес — 10 каналов",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard)
+    )
+
+
+@router.callback_query(F.data.startswith("pay_"))
+async def send_invoice(callback: CallbackQuery):
+    from config.settings import SUBSCRIPTION_PRICES
+    plan = callback.data.split("_")[1]
+    price = SUBSCRIPTION_PRICES[plan]
+    
+    await callback.bot.send_invoice(
+        chat_id=callback.from_user.id,
+        title=f"Подписка FEEL IT — AI LAB ({plan})",
+        description="Автопостинг в ваш Telegram-канал",
+        payload=f"sub_{plan}",
+        currency="XTR",
+        prices=[LabeledPrice(label=f"Подписка {plan}", amount=price)],
+        provider_token=""
+    )
+
+
+@router.pre_checkout_query()
+async def pre_checkout(pre_checkout_query: PreCheckoutQuery):
+    await pre_checkout_query.answer(ok=True)
+
+
+@router.message(F.successful_payment)
+async def successful_payment(message: Message):
+    from config.settings import ADMIN_IDS
+    payload = message.successful_payment.invoice_payload
+    
+    if payload.startswith("sub_"):
+        plan = payload.split("_")[1]
+        days = 30
+        
+        db = SessionLocal()
+        user = get_or_create_user(db, message.from_user.id)
+        user.subscription_until = datetime.utcnow() + timedelta(days=days)
+        db.commit()
+        db.close()
+        
+        await message.answer(
+            f"✅ Подписка «{plan}» активирована на {days} дней!\n\n"
+            f"Автопостинг теперь работает без ограничений."
+        )
