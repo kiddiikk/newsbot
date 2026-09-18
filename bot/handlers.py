@@ -1,5 +1,5 @@
 from aiogram import Router, F, Bot
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, LabeledPrice, PreCheckoutQuery
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -12,6 +12,7 @@ from core.ai_processor import AIProcessor
 from config.settings import ADMIN_IDS
 from datetime import datetime, timedelta
 from utils.helpers import generate_post_hash
+from aiogram.types import LabeledPrice, PreCheckoutQuery
 import random
 import logging
 
