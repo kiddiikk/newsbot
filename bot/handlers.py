@@ -188,6 +188,7 @@ async def process_channel_topic(message: Message, state: FSMContext):
     )
 
 
+
 @router.callback_query(F.data.startswith("channel_"))
 async def channel_menu(callback: CallbackQuery, state: FSMContext):
     await state.clear()
@@ -204,19 +205,32 @@ async def channel_menu(callback: CallbackQuery, state: FSMContext):
     status = "активен 🟢" if channel.is_active else "на паузе 🔴"
     mode = "с модерацией" if channel.moderation_mode else "автоматический"
 
+    # 👇 СТАТУС ДОСТУПА
+    status_extra = ""
+    if channel.owner.telegram_id in ADMIN_IDS:
+        status_extra = "\n<b>👑 Режим:</b> Администратор (безлимит)"
+    elif channel.trial_until and channel.trial_until > datetime.utcnow():
+        hours_left = int((channel.trial_until - datetime.utcnow()).total_seconds() // 3600)
+        status_extra = f"\n<b>🎁 Пробный:</b> ещё {hours_left} ч."
+    elif channel.owner.subscription_until and channel.owner.subscription_until > datetime.utcnow():
+        date_str = channel.owner.subscription_until.strftime('%d.%m.%Y')
+        status_extra = f"\n<b>💎 Подписка:</b> до {date_str}"
+    else:
+        status_extra = "\n<b>❌ Доступ:</b> закрыт. Оформите подписку."
+
     text = (
         f"<b>Управление каналом: {channel.channel_name}</b>\n\n"
         f"<b>Тема:</b> {channel.topic}\n"
         f"<b>Статус:</b> {status}\n"
         f"<b>Режим AI:</b> {mode} (модель: <code>{channel.ai_model}</code>)\n"
         f"<b>Интервал постов:</b> ~{channel.post_interval // 60} мин."
+        f"{status_extra}"
     )
 
     await callback.message.edit_text(
         text,
         reply_markup=keyboards.channel_menu(channel_id)
     )
-
 
 @router.callback_query(F.data.startswith("rss_"))
 async def rss_sources_menu(callback: CallbackQuery):
