@@ -115,6 +115,19 @@ class Scheduler:
 
                 logger.debug(f"Обработанный контент: {processed_content[:100]}...")
 
+                # 👇 ГЕНЕРАЦИЯ КАРТИНКИ, ЕСЛИ ЕЁ НЕТ
+                media = entry.get('media', [])
+                if not media:
+                    logger.info("Картинки нет, генерирую...")
+                    image_prompt = await self.ai_processor.generate_image_prompt(entry.get('title', ''))
+                    logger.info(f"Промпт для картинки: {image_prompt}")
+
+                    from core.image_generator import generate_image
+                    generated_path = generate_image(image_prompt)
+                    if generated_path:
+                        media = [generated_path]
+                        logger.info(f"Картинка сгенерирована: {generated_path}")
+                
                 # проверка на дубликаты
                 post_hash = generate_post_hash(entry['title'] + " " + entry['content'])
                 existing_post = db.query(Post).filter(
@@ -138,9 +151,9 @@ class Scheduler:
 
 
                 new_post = create_post(
-                    db, channel.id, entry.get('guid', entry.get('link', '')),  # 👈 GUID новости
+                    db, channel.id, entry.get('guid', entry.get('link', '')),
                     entry['title'], entry['content'],
-                    processed_content, entry.get('media', []),
+                    processed_content, media,  # 👈 используем переменную media
                     next_time
                 )
 
