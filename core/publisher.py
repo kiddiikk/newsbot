@@ -1,10 +1,11 @@
 import io
+import os
 import logging
 from typing import List, Optional
 
 import aiohttp
 from aiogram import Bot
-from aiogram.types import BufferedInputFile
+from aiogram.types import BufferedInputFile, FSInputFile
 from PIL import Image
 
 _MAX_IMG_SIZE = 8000000
@@ -42,16 +43,33 @@ class Publisher:
 
     async def _publish_with_media(self, channel_id: str, content: str, media_urls: List[str]) -> Optional[int]:
         for url in media_urls:
-            img_bytes = await self._download_image(url)
-            if not img_bytes:
-                logging.warning("Image download failed: %s", url)
-                continue
-            photo = BufferedInputFile(img_bytes, filename="image.jpg")
-            try:
-                msg = await self.bot.send_photo(channel_id, photo=photo, caption=content[:1024], parse_mode="HTML")
-                return msg.message_id
-            except Exception as e:
-                logging.warning("Send photo failed (%s): %s", url, e)
+            # 👇 ПРОВЕРЯЕМ: URL или локальный файл?
+            if url.startswith("http://") or url.startswith("https://"):
+                # Случай 1: URL (картинка из RSS)
+                img_bytes = await self._download_image(url)
+                if not img_bytes:
+                    logging.warning("Image download failed: %s", url)
+                    continue
+                photo = BufferedInputFile(img_bytes, filename="image.jpg")
+                try:
+                    msg = await self.bot.send_photo(channel_id, photo=photo, caption=content[:1024], parse_mode="HTML")
+                    return msg.message_id
+                except Exception as e:
+                    logging.warning("Send photo failed (%s): %s", url, e)
+                    continue
+            else:
+                # Случай 2: Локальный файл (сгенерированная картинка)
+                if not os.path.exists(url):
+                    logging.warning("Local file not found: %s", url)
+                    continue
+                try:
+                    photo = FSInputFile(url)
+                    msg = await self.bot.send_photo(channel_id, photo=photo, caption=content[:1024], parse_mode="HTML")
+                    return msg.message_id
+                except Exception as e:
+                    logging.warning("Send local photo failed (%s): %s", url, e)
+                    continue
+
         return await self._fallback_with_placeholder(channel_id, content)
 
     async def _fallback_with_placeholder(self, channel_id: str, content: str) -> Optional[int]:
