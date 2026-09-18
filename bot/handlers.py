@@ -500,6 +500,18 @@ async def create_post_start(callback: CallbackQuery, bot: Bot):
 
         media_urls = entry.get('media', [])
 
+        # 👇 ГЕНЕРАЦИЯ КАРТИНКИ, ЕСЛИ ЕЁ НЕТ
+        if not media_urls:
+            await msg.edit_text("🎨 Генерирую картинку...")
+            image_prompt = await ai_processor.generate_image_prompt(entry.get('title', ''))
+            logger.info(f"Промпт для картинки: {image_prompt}")
+            
+            from core.image_generator import generate_image
+            generated_path = generate_image(image_prompt)
+            if generated_path:
+                media_urls = [generated_path]
+                logger.info(f"Картинка сгенерирована: {generated_path}")
+
         await msg.edit_text("✅ Публикую...")
         message_id = await publisher.publish_post(
             channel.channel_id,
