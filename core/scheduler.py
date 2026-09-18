@@ -1,7 +1,7 @@
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from datetime import datetime, timedelta
-from typing import Dict, Callable
+from typing import Dict, Callable, List
 import asyncio
 import logging
 from database.crud import *
@@ -23,7 +23,6 @@ class Scheduler:
         logger.info("Scheduler инициализирован")
 
     def start(self):
-
         logger.info("Запуск планировщика задач")
 
         self.scheduler.add_job(
@@ -44,13 +43,24 @@ class Scheduler:
         )
         logger.info("Задача publish_scheduled_posts добавлена в планировщик")
 
+        self.scheduler.add_job(
+            self.check_expired_access,
+            IntervalTrigger(seconds=3600),
+            id='access_checker',
+            replace_existing=True,
+            max_instances=1
+        )
+        logger.info("Задача check_expired_access добавлена в планировщик")
+
         self.scheduler.start()
         logger.info("Планировщик запущен")
 
     async def check_rss_sources(self):
-
         logger.info("=== НАЧАЛО ПРОВЕРКИ RSS-ИСТОЧНИКОВ ===")
         start_time = datetime.utcnow()
+
+        from config.settings import ADMIN_IDS
+        from database.crud import has_access
 
         db = SessionLocal()
         try:
@@ -66,6 +76,11 @@ class Scheduler:
                 processed_count = 0
                 for source in sources:
                     try:
+                        # 👇 ПРОВЕРКА ДОСТУПА
+                        if not has_access(db, source.channel_id, ADMIN_IDS):
+                            logger.info(f"Канал {source.channel.channel_name}: доступ закрыт, пропускаем")
+                            continue
+
                         logger.info(f"Проверка источника: {source.name} ({source.url})")
                         entries = await parser.parse_feed(source.url, source.last_guid)
 
@@ -75,7 +90,6 @@ class Scheduler:
                             processed_count += len(entries)
                         else:
                             logger.debug(f"В источнике {source.name} нет новых записей")
-
 
                         update_source_check(db, source.id, error=False)
 
@@ -93,7 +107,6 @@ class Scheduler:
             logger.info(f"=== ПРОВЕРКА RSS-ИСТОЧНИКОВ ЗАВЕРШЕНА (время выполнения: {execution_time:.2f} сек) ===")
 
     async def _process_new_entries(self, entries: List[Dict], source, db):
-
         channel = source.channel
         if not channel.is_active:
             logger.info(f"Канал {channel.channel_name} неактивен, пропускаем обработку")
@@ -127,7 +140,7 @@ class Scheduler:
                     if generated_path:
                         media = [generated_path]
                         logger.info(f"Картинка сгенерирована: {generated_path}")
-                
+
                 # проверка на дубликаты
                 post_hash = generate_post_hash(entry['title'] + " " + entry['content'])
                 existing_post = db.query(Post).filter(
@@ -139,7 +152,6 @@ class Scheduler:
                     logger.info(f"Дубликат поста обнаружен и пропущен: {entry.get('title', '')}")
                     continue
 
-
                 last_post = db.query(Post).filter(
                     Post.channel_id == channel.id
                 ).order_by(Post.scheduled_time.desc()).first()
@@ -149,11 +161,10 @@ class Scheduler:
                 else:
                     next_time = datetime.utcnow() + timedelta(minutes=5)
 
-
                 new_post = create_post(
                     db, channel.id, entry.get('guid', entry.get('link', '')),
                     entry['title'], entry['content'],
-                    processed_content, media,  # 👈 используем переменную media
+                    processed_content, media,
                     next_time
                 )
 
@@ -168,9 +179,11 @@ class Scheduler:
                 continue
 
     async def publish_scheduled_posts(self):
-
         logger.info("=== НАЧАЛО ПУБЛИКАЦИИ ЗАПЛАНИРОВАННЫХ ПОСТОВ ===")
         start_time = datetime.utcnow()
+
+        from config.settings import ADMIN_IDS
+        from database.crud import has_access
 
         db = SessionLocal()
         try:
@@ -187,6 +200,11 @@ class Scheduler:
                         logger.info(f"Канал {channel.channel_name} неактивен, пост {post.id} пропущен")
                         continue
 
+                    # 👇 ПРОВЕРКА ДОСТУПА
+                    if not has_access(db, channel.id, ADMIN_IDS):
+                        logger.info(f"Канал {channel.channel_name}: доступ закрыт, пост {post.id} пропущен")
+                        continue
+
                     logger.info(f"Публикация поста ID {post.id} в канал {channel.channel_name}")
 
                     if channel.moderation_mode:
@@ -194,7 +212,6 @@ class Scheduler:
                             f"Канал {channel.channel_name} в режиме модерации, пост {post.id} отправлен на модерацию")
                         update_post_status(db, post.id, "moderation")
                         continue
-
 
                     message_id = await self.publisher.publish_post(
                         channel.channel_id,
@@ -210,7 +227,6 @@ class Scheduler:
                         update_post_status(db, post.id, "failed")
                         failed_count += 1
                         logger.error(f"Не удалось опубликовать пост {post.id}")
-
 
                     await asyncio.sleep(2)
 
@@ -229,8 +245,48 @@ class Scheduler:
             logger.info(
                 f"=== ПУБЛИКАЦИЯ ЗАПЛАНИРОВАННЫХ ПОСТОВ ЗАВЕРШЕНА (время выполнения: {execution_time:.2f} сек) ===")
 
-    def stop(self):
+    async def check_expired_access(self):
+        """Уведомляет клиентов об окончании пробного периода"""
+        from config.settings import ADMIN_IDS
 
+        logger.info("=== ПРОВЕРКА ИСТЁКШИХ ПРОБНЫХ ПЕРИОДОВ ===")
+        db = SessionLocal()
+        try:
+            now = datetime.utcnow()
+            from database.models import Channel
+
+            expired_trials = db.query(Channel).filter(
+                Channel.trial_until < now,
+                Channel.trial_until > now - timedelta(hours=2),
+                Channel.trial_notified == False
+            ).all()
+
+            logger.info(f"Найдено истёкших пробных: {len(expired_trials)}")
+
+            for channel in expired_trials:
+                try:
+                    owner = channel.owner
+                    if owner.telegram_id in ADMIN_IDS:
+                        continue
+
+                    await self.bot.send_message(
+                        owner.telegram_id,
+                        f"⏰ Пробный период для канала «{channel.channel_name}» закончился.\n\n"
+                        f"Чтобы публикации продолжились, оформите подписку.\n"
+                        f"Нажмите /start → 💎 Подписка"
+                    )
+                    channel.trial_notified = True
+                    db.commit()
+                    logger.info(f"Уведомление отправлено: {owner.telegram_id}")
+                except Exception as e:
+                    logger.error(f"Не удалось уведомить {channel.owner.telegram_id}: {e}")
+
+        except Exception as e:
+            logger.error(f"Ошибка в check_expired_access: {e}", exc_info=True)
+        finally:
+            db.close()
+
+    def stop(self):
         logger.info("Остановка планировщика задач")
         self.scheduler.shutdown()
         logger.info("Планировщик остановлен")
