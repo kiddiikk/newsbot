@@ -11,6 +11,7 @@ from core.publisher import Publisher
 from core.ai_processor import AIProcessor
 from config.settings import ADMIN_IDS
 from datetime import datetime, timedelta
+from utils.helpers import generate_post_hash
 import random
 import logging
 
@@ -450,8 +451,26 @@ async def create_post_start(callback: CallbackQuery, bot: Bot):
                 return
 
             await msg.edit_text("🧠 Обрабатываю...")
+                        # ФИЛЬТРАЦИЯ ДУБЛЕЙ
+            filtered_entries = []
+            for e in all_entries:
+                post_hash = generate_post_hash(e['title'] + " " + e['content'])
+                existing = db.query(Post).filter(
+                    Post.channel_id == channel_id,
+                    Post.hash == post_hash
+                ).first()
+                if not existing:
+                    filtered_entries.append(e)
+            
+            if not filtered_entries:
+                await msg.edit_text("❌ Все новости уже опубликованы.")
+                db.close()
+                return
+            
+            all_entries = filtered_entries
+            logger.info(f"После фильтра дублей: {len(all_entries)}")
+            
             entry = random.choice(all_entries)
-
             # 👇 РАЗНЫЕ ПРОМПТЫ
             if is_fun_post:
                 custom_prompt = (
