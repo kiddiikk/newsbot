@@ -876,3 +876,48 @@ async def successful_payment(message: Message):
             f"✅ Подписка «{plan}» активирована на {days} дней!\n\n"
             f"Автопостинг теперь работает без ограничений."
         )
+# ============================================================
+# МОДЕРАЦИЯ ПОСТОВ
+# ============================================================
+
+@router.callback_query(F.data.startswith("approve_"))
+async def approve_post(callback: CallbackQuery, bot: Bot):
+    post_id = int(callback.data.split("_")[1])
+    
+    db = SessionLocal()
+    post = db.query(Post).filter(Post.id == post_id).first()
+    if not post:
+        await callback.answer("Пост не найден!", show_alert=True)
+        db.close()
+        return
+    
+    channel = post.channel
+    
+    # Публикуем
+    publisher = Publisher(bot)
+    message_id = await publisher.publish_post(
+        channel.channel_id,
+        post.processed_content,
+        post.media_urls
+    )
+    
+    if message_id:
+        update_post_status(db, post_id, "published", message_id)
+        await callback.message.edit_text(
+            f"✅ Пост опубликован в канал «{channel.channel_name}»!"
+        )
+    else:
+        await callback.answer("❌ Ошибка публикации", show_alert=True)
+    
+    db.close()
+
+
+@router.callback_query(F.data.startswith("reject_"))
+async def reject_post(callback: CallbackQuery):
+    post_id = int(callback.data.split("_")[1])
+    
+    db = SessionLocal()
+    update_post_status(db, post_id, "rejected")
+    db.close()
+    
+    await callback.message.edit_text("❌ Пост отклонён.")
