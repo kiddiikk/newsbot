@@ -165,13 +165,23 @@ async def process_channel_topic(message: Message, state: FSMContext):
         db, user.id, data['channel_id'],
         data['channel_name'], message.text
     )
+    
+    # 👇 АКТИВИРУЕМ ПРОБНЫЙ ПЕРИОД
+    from config.settings import ADMIN_IDS, TRIAL_DAYS
+    if message.from_user.id not in ADMIN_IDS and not user.trial_used:
+        activate_trial(db, channel.id, days=TRIAL_DAYS)
+        user.trial_used = True
+        db.commit()
+        trial_msg = f"\n\n🎁 Вам активирован пробный период на {TRIAL_DAYS} день!"
+    else:
+        trial_msg = ""
+    
     db.close()
-
     await state.clear()
 
     await message.answer(
-        f"✅ Канал '{data['channel_name']}' успешно добавлен!\n\n"
-        "Теперь необходимо добавить источники новостей (RSS-ленты).",
+        f"✅ Канал '{data['channel_name']}' успешно добавлен!{trial_msg}\n\n"
+        "Теперь добавьте RSS-источники.",
         reply_markup=keyboards.channel_menu(channel.id)
     )
 
