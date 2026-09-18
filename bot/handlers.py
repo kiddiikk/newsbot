@@ -506,7 +506,7 @@ async def create_post_start(callback: CallbackQuery, bot: Bot):
 
         if message_id:
             new_post = create_post(
-                db, channel_id, active_sources[0].url,
+                db, channel_id, entry.get('guid', entry.get('link', '')),  # 👈 GUID новости
                 entry['title'], entry['content'],
                 processed_content, media_urls,
                 datetime.utcnow()
