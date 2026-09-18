@@ -44,10 +44,11 @@ async def start_command(message: Message, state: FSMContext):
 
     db.close()
 
+    is_admin = message.from_user.id in ADMIN_IDS
     await message.answer(
         "👋 Добро пожаловать в Channel Manager Bot!\n\n"
         "Я помогу автоматизировать ведение ваших телеграм-каналов.",
-        reply_markup=keyboards.main_admin_menu()
+        reply_markup=keyboards.main_menu(is_admin=is_admin)
     )
 
 
