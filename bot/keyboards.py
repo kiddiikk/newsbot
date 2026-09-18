@@ -4,15 +4,21 @@ from database.models import Post, RSSSource
 from config.settings import AI_MODELS
 
 
-
 class Keyboards:
     @staticmethod
-    def main_admin_menu():
+    def main_menu(is_admin: bool = False):
         keyboard = [
             [InlineKeyboardButton(text="📊 Мои каналы", callback_data="my_channels")],
             [InlineKeyboardButton(text="➕ Добавить канал", callback_data="add_channel")],
         ]
+        if not is_admin:
+            keyboard.append([InlineKeyboardButton(text="💎 Подписка", callback_data="subscribe")])
         return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+    @staticmethod
+    def main_admin_menu():
+        # Оставлено для совместимости
+        return Keyboards.main_menu(is_admin=True)
 
     @staticmethod
     def channel_menu(channel_id: int):
@@ -138,5 +144,25 @@ class Keyboards:
                 InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"confirm_delete_{channel_id}"),
                 InlineKeyboardButton(text="❌ Отмена", callback_data=f"channel_{channel_id}")
             ]
+        ]
+        return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+    @staticmethod
+    def subscribe_menu():
+        from config.settings import SUBSCRIPTION_PRICES
+        keyboard = [
+            [InlineKeyboardButton(
+                text=f"🚀 Старт — {SUBSCRIPTION_PRICES['start']} ⭐",
+                callback_data="pay_start"
+            )],
+            [InlineKeyboardButton(
+                text=f"💎 Про — {SUBSCRIPTION_PRICES['pro']} ⭐",
+                callback_data="pay_pro"
+            )],
+            [InlineKeyboardButton(
+                text=f"🏢 Бизнес — {SUBSCRIPTION_PRICES['business']} ⭐",
+                callback_data="pay_business"
+            )],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="back_main")]
         ]
         return InlineKeyboardMarkup(inline_keyboard=keyboard)
