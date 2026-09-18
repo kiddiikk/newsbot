@@ -9,3 +9,4 @@ Pillow
 python-dotenv
 markdown2
 groq
+pollinations-client
