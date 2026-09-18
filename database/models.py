@@ -17,6 +17,8 @@ class User(Base):
     is_admin = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     channels = relationship("Channel", back_populates="owner")
+    subscription_until = Column(DateTime, nullable=True)
+    trial_used = Column(Boolean, default=False)
 
 
 class Channel(Base):
@@ -36,6 +38,8 @@ class Channel(Base):
     rss_sources = relationship("RSSSource", back_populates="channel")
     posts = relationship("Post", back_populates="channel")
     settings = Column(JSON, default={})
+    trial_until = Column(DateTime, nullable=True)
+    trial_notified = Column(Boolean, default=False)
 
 
 class RSSSource(Base):
