@@ -120,7 +120,7 @@ class AIProcessor:
             logger.error(f"Ошибка при переводе: {str(e)}", exc_info=True)
             return text
 
-                async def generate_image_prompt(self, title: str) -> str:
+    async def generate_image_prompt(self, title: str) -> str:
         """Генерирует промпт для картинки на основе заголовка новости"""
         try:
             response = await self._call_groq(
