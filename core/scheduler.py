@@ -138,7 +138,7 @@ class Scheduler:
 
 
                 new_post = create_post(
-                    db, channel.id, source.url,
+                    db, channel.id, entry.get('guid', entry.get('link', '')),  # 👈 GUID новости
                     entry['title'], entry['content'],
                     processed_content, entry.get('media', []),
                     next_time
