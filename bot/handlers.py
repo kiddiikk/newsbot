@@ -393,7 +393,21 @@ async def create_post_start(callback: CallbackQuery, bot: Bot):
         await callback.answer("Канал не найден!", show_alert=True)
         db.close()
         return
-
+        
+            # 👇 ПРОВЕРКА ДОСТУПА
+    from config.settings import ADMIN_IDS
+    from database.crud import has_access
+    
+    if not has_access(db, channel_id, ADMIN_IDS):
+        await callback.answer(
+            "❌ Подписка неактивна. Оформите в меню «💎 Подписка».",
+            show_alert=True
+        )
+        db.close()
+        return
+    
+    sources = db.query(RSSSource).filter_by(channel_id=channel_id, is_active=True).all()
+    
     if not sources:
         await callback.answer("Сначала добавьте RSS источники!", show_alert=True)
         db.close()
