@@ -451,16 +451,19 @@ async def create_post_start(callback: CallbackQuery, bot: Bot):
                 return
 
             await msg.edit_text("🧠 Обрабатываю...")
-                        # ФИЛЬТРАЦИЯ ДУБЛЕЙ
+            
+            # ФИЛЬТРАЦИЯ ДУБЛЕЙ ПО GUID
             filtered_entries = []
             for e in all_entries:
-                post_hash = generate_post_hash(e['title'] + " " + e['content'])
+                guid = e.get('guid', e.get('link', ''))
                 existing = db.query(Post).filter(
                     Post.channel_id == channel_id,
-                    Post.hash == post_hash
+                    Post.source_url == guid
                 ).first()
                 if not existing:
                     filtered_entries.append(e)
+                else:
+                    logger.info(f"Дубль пропущен: {e.get('title', '')[:50]}")
             
             if not filtered_entries:
                 await msg.edit_text("❌ Все новости уже опубликованы.")
