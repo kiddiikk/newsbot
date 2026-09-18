@@ -106,6 +106,22 @@ class AIProcessor:
 
     async def simple_translate(self, text: str) -> str:
 
+            async def generate_image_prompt(self, title: str) -> str:
+        """Генерирует промпт для картинки на основе заголовка новости"""
+        try:
+            response = await self._call_groq(
+                self.SAFE_MODEL,
+                "Ты — промпт-инженер для генерации изображений. "
+                "Напиши короткое описание (на английском, 5-10 слов) для генерации картинки по теме новости. "
+                "Только описание, без пояснений, без кавычек. "
+                "Стиль: современный, цифровой, минималистичный.",
+                f"Новость: {title}"
+            )
+            return response.strip() if response else "artificial intelligence, digital art, modern technology"
+        except Exception as e:
+            logger.error(f"Ошибка генерации промпта: {e}")
+            return "artificial intelligence, digital art, modern technology"
+        
         try:
             if not text or len(text.strip()) < 3:
                 return text
