@@ -180,3 +180,32 @@ def get_moderation_posts(db: Session, channel_id: int):
         Post.channel_id == channel_id,
         Post.status == "moderation"
     ).all()
+def get_user_by_telegram_id(db: Session, telegram_id: int):
+    return db.query(User).filter(User.telegram_id == telegram_id).first()
+
+
+def activate_trial(db: Session, channel_id: int, days: int = 1):
+    channel = db.query(Channel).filter(Channel.id == channel_id).first()
+    if channel:
+        channel.trial_until = datetime.utcnow() + timedelta(days=days)
+        channel.trial_notified = False
+        db.commit()
+    return channel
+
+
+def has_access(db: Session, channel_id: int, admin_ids: list) -> bool:
+    channel = db.query(Channel).filter(Channel.id == channel_id).first()
+    if not channel:
+        return False
+    
+    owner = channel.owner
+    if owner.telegram_id in admin_ids:
+        return True
+    
+    now = datetime.utcnow()
+    if channel.trial_until and channel.trial_until > now:
+        return True
+    if owner.subscription_until and owner.subscription_until > now:
+        return True
+    
+    return False
