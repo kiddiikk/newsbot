@@ -48,7 +48,7 @@ async def start_command(message: Message, state: FSMContext):
     is_admin = message.from_user.id in ADMIN_IDS
     
     welcome_text = (
-        "👋 <b>Привет! Я — FEEL IT | AI LAB</b>\n\n"
+        "👋 <b>Привет! Я бот команды — FEEL IT - AI LAB</b>\n\n"
         "🤖 Я — твой личный контент-менеджер на автопилоте. "
         "Пока ты занимаешься делами, я ищу свежие новости, обрабатываю их через нейросети, "
         "генерирую картинки и публикую в твой Telegram-канал.\n\n"
