@@ -811,26 +811,19 @@ async def toggle_moderation(callback: CallbackQuery):
 @router.callback_query(F.data == "subscribe")
 async def subscribe_menu(callback: CallbackQuery):
     from config.settings import SUBSCRIPTION_PRICES
-    keyboard = [
-        [InlineKeyboardButton(
-            text=f"🚀 Старт — {SUBSCRIPTION_PRICES['start']} ⭐",
-            callback_data="pay_start"
-        )],
-        [InlineKeyboardButton(
-            text=f"💎 Про — {SUBSCRIPTION_PRICES['pro']} ⭐",
-            callback_data="pay_pro"
-        )],
-        [InlineKeyboardButton(
-            text=f"🏢 Бизнес — {SUBSCRIPTION_PRICES['business']} ⭐",
-            callback_data="pay_business"
-        )],
-        [InlineKeyboardButton(text="◀️ Назад", callback_data="back_main")]
-    ]
+    keyboard = []
+    for plan_key, plan in SUBSCRIPTION_PRICES.items():
+        keyboard.append([InlineKeyboardButton(
+            text=f"{plan['name']} — {plan['price']} ⭐",
+            callback_data=f"pay_{plan_key}"
+        )])
+    keyboard.append([InlineKeyboardButton(text="◀️ Назад", callback_data="back_main")])
+    
     await callback.message.edit_text(
         "💎 Выберите тариф подписки:\n\n"
         "🚀 Старт — 1 канал, 10 постов/день\n"
-        "💎 Про — 3 канала, безлимит постов\n"
-        "🏢 Бизнес — 10 каналов",
+        "💎 Про — 2 канала, 30 постов/день\n"
+        "🏢 Бизнес — 5 каналов, 100 постов/день",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard)
     )
 
