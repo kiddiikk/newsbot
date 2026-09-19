@@ -989,3 +989,59 @@ async def contact(callback: CallbackQuery):
         ]),
         parse_mode="HTML"
     )
+@router.callback_query(F.data == "trial_info")
+async def trial_info(callback: CallbackQuery):
+    keyboard = [
+        [InlineKeyboardButton(text="📢 Перейти на канал", url="https://t.me/feelit_ailab")],
+        [InlineKeyboardButton(text="✅ Условия выполнены", callback_data="check_trial_subscription")],
+        [InlineKeyboardButton(text="◀️ Назад", callback_data="subscribe")]
+    ]
+    await callback.message.edit_text(
+        "🎁 <b>Пробный период</b>\n\n"
+        "<b>Что входит:</b>\n"
+        "• 1 день полного доступа\n"
+        "• 1 канал\n"
+        "• До 10 постов\n"
+        "• Генерация картинок\n\n"
+        "<b>Условие для получения:</b>\n"
+        "• Подписка на канал <a href='https://t.me/feelit_ailab'>FEEL IT — AI LAB</a>\n\n"
+        "После подписки нажми «✅ Условия выполнены».",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard),
+        parse_mode="HTML",
+        disable_web_page_preview=True
+    )
+
+
+@router.callback_query(F.data == "check_trial_subscription")
+async def check_trial_subscription(callback: CallbackQuery, bot: Bot):
+    from config.settings import ADMIN_IDS
+    
+    user_id = callback.from_user.id
+    
+    try:
+        member = await bot.get_chat_member("@feelit_ailab", user_id)
+        if member.status in ("creator", "administrator", "member"):
+            db = SessionLocal()
+            user = get_or_create_user(db, user_id)
+            
+            if user.trial_used:
+                await callback.answer("❌ Вы уже использовали пробный период!", show_alert=True)
+                db.close()
+                return
+            
+            user.trial_used = True
+            db.commit()
+            db.close()
+            
+            await callback.message.edit_text(
+                "✅ <b>Пробный период активирован!</b>\n\n"
+                "Теперь добавь канал и настрой RSS — бот начнёт работать.",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="➕ Добавить канал", callback_data="add_channel")]
+                ]),
+                parse_mode="HTML"
+            )
+        else:
+            await callback.answer("❌ Вы не подписаны на канал!", show_alert=True)
+    except Exception as e:
+        await callback.answer(f"❌ Ошибка проверки: {str(e)[:50]}", show_alert=True)
