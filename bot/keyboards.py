@@ -10,6 +10,8 @@ class Keyboards:
         keyboard = [
             [InlineKeyboardButton(text="📊 Мои каналы", callback_data="my_channels")],
             [InlineKeyboardButton(text="➕ Добавить канал", callback_data="add_channel")],
+            [InlineKeyboardButton(text="🤖 Что я умею?", callback_data="what_i_can")],
+            [InlineKeyboardButton(text="📢 Реклама/Сотрудничество", callback_data="contact")],
         ]
         if not is_admin:
             keyboard.append([InlineKeyboardButton(text="💎 Подписка", callback_data="subscribe")])
