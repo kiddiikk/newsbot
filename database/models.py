@@ -19,6 +19,7 @@ class User(Base):
     channels = relationship("Channel", back_populates="owner")
     subscription_until = Column(DateTime, nullable=True)
     trial_used = Column(Boolean, default=False)
+    subscription_plan = Column(String, nullable=True)
 
 
 class Channel(Base):
