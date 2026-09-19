@@ -916,3 +916,73 @@ async def reject_post(callback: CallbackQuery):
     db.close()
     
     await callback.message.edit_text("❌ Пост отклонён.")
+    @router.callback_query(F.data == "what_i_can")
+async def what_i_can(callback: CallbackQuery):
+    keyboard = [
+        [InlineKeyboardButton(text="🤖 Обо мне", callback_data="about_bot")],
+        [InlineKeyboardButton(text="💎 О тарифах", callback_data="about_tariffs")],
+        [InlineKeyboardButton(text="◀️ Назад", callback_data="back_main")]
+    ]
+    await callback.message.edit_text(
+        "🤖 <b>Что я умею?</b>\n\n"
+        "Выбери, что хочешь узнать:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard),
+        parse_mode="HTML"
+    )
+
+
+@router.callback_query(F.data == "about_bot")
+async def about_bot(callback: CallbackQuery):
+    await callback.message.edit_text(
+        "🤖 <b>FEEL IT — AI LAB</b>\n\n"
+        "Я — бот, который <b>сам ведёт твой Telegram-канал</b>.\n\n"
+        "🔹 <b>Что я делаю:</b>\n"
+        "• Ищу свежие новости по твоей теме\n"
+        "• Обрабатываю через нейросети (перевод, рерайт, стиль)\n"
+        "• Генерирую уникальные картинки, если их нет\n"
+        "• Публикую по расписанию — без твоего участия\n\n"
+        "🔹 <b>Почему я:</b>\n"
+        "• Не нужно быть контент-менеджером\n"
+        "• Канал живёт, пока ты спишь\n"
+        "• Всё в одном боте — от RSS до публикации\n\n"
+        "🔹 <b>Для кого:</b>\n"
+        "• Владельцы каналов, которым нужен контент\n"
+        "• Те, кто устал искать новости вручную\n"
+        "• Те, кто хочет автоматизировать рутину",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="what_i_can")]
+        ]),
+        parse_mode="HTML"
+    )
+
+
+@router.callback_query(F.data == "about_tariffs")
+async def about_tariffs(callback: CallbackQuery):
+    from config.settings import SUBSCRIPTION_PRICES
+    text = "💎 <b>Тарифы подписки</b>\n\n"
+    for key, plan in SUBSCRIPTION_PRICES.items():
+        text += f"<b>{plan['name']}</b> — {plan['price']} ⭐\n"
+        text += f"• {plan['channels']} канал(ов)\n"
+        text += f"• {plan['posts_per_day']} постов/день\n\n"
+    
+    await callback.message.edit_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="what_i_can")]
+        ]),
+        parse_mode="HTML"
+    )
+
+
+@router.callback_query(F.data == "contact")
+async def contact(callback: CallbackQuery):
+    await callback.message.edit_text(
+        "📢 <b>Реклама и сотрудничество</b>\n\n"
+        "По всем вопросам:\n\n"
+        "👤 Telegram: @kiddybesoul\n"
+        "📧 Email: tvdusa90@gmail.com",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="back_main")]
+        ]),
+        parse_mode="HTML"
+    )
