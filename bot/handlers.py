@@ -46,10 +46,25 @@ async def start_command(message: Message, state: FSMContext):
     db.close()
 
     is_admin = message.from_user.id in ADMIN_IDS
+    
+    welcome_text = (
+        "👋 <b>Привет! Я — FEEL IT | AI LAB</b>\n\n"
+        "🤖 Я — твой личный контент-менеджер на автопилоте. "
+        "Пока ты занимаешься делами, я ищу свежие новости, обрабатываю их через нейросети, "
+        "генерирую картинки и публикую в твой Telegram-канал.\n\n"
+        "📌 <b>Что я умею:</b>\n"
+        "• Автоматически вести канал 24/7\n"
+        "• Искать и перерабатывать контент по твоей теме\n"
+        "• Создавать уникальные визуалы\n"
+        "• Публиковать по расписанию — без твоего участия\n\n"
+        "👇 <b>👇 Всё просто: добавляешь канал, выбираешь тему — и забываешь о рутине. 
+        Бот работает, ты отдыхаешь.."
+    )
+    
     await message.answer(
-        "👋 Добро пожаловать в Channel Manager Bot!\n\n"
-        "Я помогу автоматизировать ведение ваших телеграм-каналов.",
-        reply_markup=keyboards.main_menu(is_admin=is_admin)
+        welcome_text,
+        reply_markup=keyboards.main_menu(is_admin=is_admin),
+        parse_mode="HTML"
     )
 
 
