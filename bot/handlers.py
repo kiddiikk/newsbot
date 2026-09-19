@@ -817,6 +817,7 @@ async def subscribe_menu(callback: CallbackQuery):
             text=f"{plan['name']} — {plan['price']} ⭐",
             callback_data=f"pay_{plan_key}"
         )])
+    keyboard.append([InlineKeyboardButton(text="🎁 Пробный период", callback_data="trial_info")])
     keyboard.append([InlineKeyboardButton(text="◀️ Назад", callback_data="back_main")])
     
     await callback.message.edit_text(
