@@ -56,9 +56,10 @@ async def start_command(message: Message, state: FSMContext):
 @router.callback_query(F.data == "back_main")
 async def back_to_main_menu(callback: CallbackQuery, state: FSMContext):
     await state.clear()
+    is_admin = callback.from_user.id in ADMIN_IDS
     await callback.message.edit_text(
         "Главное меню:",
-        reply_markup=keyboards.main_admin_menu()
+        reply_markup=keyboards.main_menu(is_admin=is_admin)
     )
 
 
