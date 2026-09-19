@@ -917,7 +917,8 @@ async def reject_post(callback: CallbackQuery):
     db.close()
     
     await callback.message.edit_text("❌ Пост отклонён.")
-    @router.callback_query(F.data == "what_i_can")
+    
+@router.callback_query(F.data == "what_i_can")
 async def what_i_can(callback: CallbackQuery):
     keyboard = [
         [InlineKeyboardButton(text="🤖 Обо мне", callback_data="about_bot")],
