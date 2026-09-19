@@ -36,15 +36,27 @@ async def set_main_menu(bot: Bot):
 
 
 def migrate_db():
-    """Безопасная миграция базы данных"""
+    """Безопасная миграция базы данных (работает и с SQLite, и с PostgreSQL)"""
     logger.info("🔍 Проверка необходимости миграции базы данных...")
+
+    from config.settings import DATABASE_URL
 
     with engine.connect() as conn:
         try:
-            # Проверяем, существует ли столбец hash в таблице posts
-            result = conn.execute(text("""
-                SELECT name FROM pragma_table_info('posts') WHERE name = 'hash'
-            """))
+            # 👇 Определяем тип базы
+            is_postgres = DATABASE_URL.startswith("postgresql")
+
+            if is_postgres:
+                # PostgreSQL: проверяем через information_schema
+                result = conn.execute(text("""
+                    SELECT column_name FROM information_schema.columns 
+                    WHERE table_name = 'posts' AND column_name = 'hash'
+                """))
+            else:
+                # SQLite: проверяем через pragma_table_info
+                result = conn.execute(text("""
+                    SELECT name FROM pragma_table_info('posts') WHERE name = 'hash'
+                """))
 
             if not result.fetchone():
                 logger.info("🔧 Столбец 'hash' отсутствует в таблице posts. Выполняем миграцию...")
@@ -57,7 +69,6 @@ def migrate_db():
         except Exception as e:
             logger.error(f"❌ Ошибка при миграции базы данных: {str(e)}", exc_info=True)
             logger.info("🔧 Попытка восстановления структуры базы данных...")
-            # Создаем таблицы, если они не существуют
             Base.metadata.create_all(engine)
             logger.info("✅ Структура базы данных восстановлена")
 
@@ -70,7 +81,6 @@ async def main():
     if not GROQ_API_KEY:
         logger.critical("❌ GROQ_API_KEY не найден! Проверьте ваш .env файл.")
         return
-
 
     migrate_db()
 
