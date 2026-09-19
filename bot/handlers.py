@@ -831,16 +831,16 @@ async def subscribe_menu(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("pay_"))
 async def send_invoice(callback: CallbackQuery):
     from config.settings import SUBSCRIPTION_PRICES
-    plan = callback.data.split("_")[1]
-    price = SUBSCRIPTION_PRICES[plan]
+    plan_key = callback.data.split("_")[1]
+    plan = SUBSCRIPTION_PRICES[plan_key]
     
     await callback.bot.send_invoice(
         chat_id=callback.from_user.id,
-        title=f"Подписка FEEL IT — AI LAB ({plan})",
-        description="Автопостинг в ваш Telegram-канал",
-        payload=f"sub_{plan}",
+        title=f"Подписка FEEL IT — AI LAB ({plan['name']})",
+        description=f"{plan['channels']} канал(ов), {plan['posts_per_day']} постов/день",
+        payload=f"sub_{plan_key}",
         currency="XTR",
-        prices=[LabeledPrice(label=f"Подписка {plan}", amount=price)],
+        prices=[LabeledPrice(label=plan['name'], amount=plan['price'])],
         provider_token=""
     )
 
@@ -852,22 +852,24 @@ async def pre_checkout(pre_checkout_query: PreCheckoutQuery):
 
 @router.message(F.successful_payment)
 async def successful_payment(message: Message):
-    from config.settings import ADMIN_IDS
     payload = message.successful_payment.invoice_payload
     
     if payload.startswith("sub_"):
-        plan = payload.split("_")[1]
+        plan_key = payload.split("_")[1]
         days = 30
         
         db = SessionLocal()
         user = get_or_create_user(db, message.from_user.id)
         user.subscription_until = datetime.utcnow() + timedelta(days=days)
+        user.subscription_plan = plan_key  # 👈 сохраняем тариф
         db.commit()
         db.close()
         
+        from config.settings import SUBSCRIPTION_PRICES
+        plan = SUBSCRIPTION_PRICES[plan_key]
         await message.answer(
-            f"✅ Подписка «{plan}» активирована на {days} дней!\n\n"
-            f"Автопостинг теперь работает без ограничений."
+            f"✅ Подписка «{plan['name']}» активирована на {days} дней!\n\n"
+            f"📊 Лимиты: {plan['channels']} канал(ов), {plan['posts_per_day']} постов/день"
         )
 # ============================================================
 # МОДЕРАЦИЯ ПОСТОВ
