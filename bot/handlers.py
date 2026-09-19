@@ -212,24 +212,30 @@ async def channel_menu(callback: CallbackQuery, state: FSMContext):
 
     db = SessionLocal()
     channel = db.query(Channel).filter(Channel.id == channel_id).first()
-    db.close()
 
     if not channel:
         await callback.answer("Канал не найден!", show_alert=True)
+        db.close()
         return
 
     status = "активен 🟢" if channel.is_active else "на паузе 🔴"
     mode = "с модерацией" if channel.moderation_mode else "автоматический"
 
-    # 👇 СТАТУС ДОСТУПА
+    # 👇 Читаем owner, пока сессия ещё открыта
+    owner_telegram_id = channel.owner.telegram_id
+    trial_until = channel.trial_until
+    subscription_until = channel.owner.subscription_until
+
+    db.close()  # 👈 ЗАКРЫВАЕМ ПОСЛЕ ЧТЕНИЯ
+
     status_extra = ""
-    if channel.owner.telegram_id in ADMIN_IDS:
+    if owner_telegram_id in ADMIN_IDS:
         status_extra = "\n<b>👑 Режим:</b> Администратор (безлимит)"
-    elif channel.trial_until and channel.trial_until > datetime.utcnow():
-        hours_left = int((channel.trial_until - datetime.utcnow()).total_seconds() // 3600)
+    elif trial_until and trial_until > datetime.utcnow():
+        hours_left = int((trial_until - datetime.utcnow()).total_seconds() // 3600)
         status_extra = f"\n<b>🎁 Пробный:</b> ещё {hours_left} ч."
-    elif channel.owner.subscription_until and channel.owner.subscription_until > datetime.utcnow():
-        date_str = channel.owner.subscription_until.strftime('%d.%m.%Y')
+    elif subscription_until and subscription_until > datetime.utcnow():
+        date_str = subscription_until.strftime('%d.%m.%Y')
         status_extra = f"\n<b>💎 Подписка:</b> до {date_str}"
     else:
         status_extra = "\n<b>❌ Доступ:</b> закрыт. Оформите подписку."
@@ -243,6 +249,10 @@ async def channel_menu(callback: CallbackQuery, state: FSMContext):
         f"{status_extra}"
     )
 
+    await callback.message.edit_text(
+        text,
+        reply_markup=keyboards.channel_menu(channel_id)
+    )
     await callback.message.edit_text(
         text,
         reply_markup=keyboards.channel_menu(channel_id)
