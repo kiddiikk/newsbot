@@ -39,3 +39,4 @@ SUBSCRIPTION_PRICES = {
         "name": "🏢 Бизнес",
     },
 }
+TRIAL_DAYS = 1
