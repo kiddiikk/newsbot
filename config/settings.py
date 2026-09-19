@@ -20,7 +20,22 @@ GROQ_MODELS = [
 DEFAULT_AI_MODEL = "openai/gpt-oss-120b"
 AI_MODELS = GROQ_MODELS
 SUBSCRIPTION_PRICES = {
-    "start": 300,
-    "pro": 700,
-    "business": 1500,
+    "start": {
+        "price": 250,
+        "channels": 1,
+        "posts_per_day": 10,
+        "name": "🚀 Старт",
+    },
+    "pro": {
+        "price": 500,
+        "channels": 2,
+        "posts_per_day": 30,
+        "name": "💎 Про",
+    },
+    "business": {
+        "price": 1000,
+        "channels": 5,
+        "posts_per_day": 100,
+        "name": "🏢 Бизнес",
+    },
 }
