@@ -30,7 +30,7 @@ class User(Base):
     subscription_until = Column(DateTime(timezone=True), nullable=True)
     trial_used = Column(Boolean, default=False)
     subscription_plan = Column(String, nullable=True)
-    user_type = Column(String, nullable=False, default='user', server_default='user')
+    user_type = Column(String, nullable=False, default='REGISTERED', server_default='REGISTERED')
 
     # ✅ primaryjoin обязателен с обеих сторон, т.к. FK убран
     channels = relationship(
