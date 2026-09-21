@@ -21,7 +21,8 @@ class User(Base):
     # Бот НЕ создаёт эту таблицу, только читает/обновляет по telegram_id.
     __table_args__ = {'extend_existing': True}
 
-    id = Column(UUID(as_uuid=True), primary_key=True)  # UUID, не Integer — иначе маппинг сломается
+    id = Column(UUID(as_uuid=True), primary_key=True,
+            server_default=text("gen_random_uuid()"))  # UUID, не Integer — иначе маппинг сломается
     telegram_id = Column(BigInteger, unique=True, index=True)  # BigInteger, т.к. ID Telegram > 2^31
     username = Column(String)
     is_admin = Column(Boolean, default=False)
