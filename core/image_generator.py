@@ -16,7 +16,7 @@ def generate_image(prompt: str) -> str:
         url = (
             f"https://image.pollinations.ai/prompt/{encoded}"
             f"?width=1024&height=1024"
-            f"&model=flux"
+            f"&model=turbo"
             f"&nologo=true"
             f"&enhance=false"
             f"&safe=false"
