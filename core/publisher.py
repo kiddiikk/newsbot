@@ -91,11 +91,15 @@ class Publisher:
         if self._http is None:
             self._http = aiohttp.ClientSession()
         try:
-            async with self._http.get(url, timeout=aiohttp.ClientTimeout(total=10)) as r:
+            async with self._http.get(url, timeout=aiohttp.ClientTimeout(total=15)) as r:
                 if r.status != 200:
+                    logging.warning("Download failed: %s → %s", url, r.status)
                     return None
                 data = await r.read()
+                size_kb = len(data) / 1024
+                logging.info("Downloaded: %s → %.0f KB", url[:80], size_kb)
                 if len(data) > _MAX_IMG_SIZE:
+                    logging.warning("Too large: %.0f KB > %s", size_kb, _MAX_IMG_SIZE)
                     return None
                 return self._optimize_image(data)
         except Exception as e:
