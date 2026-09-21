@@ -7,6 +7,8 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
 from datetime import datetime
 from config.settings import DATABASE_URL, DEFAULT_AI_MODEL
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import text
 
 Base = declarative_base()
 engine = create_engine(DATABASE_URL)
@@ -41,7 +43,8 @@ class Channel(Base):
     __tablename__ = "channels"
     __table_args__ = {'extend_existing': True}
 
-    id = Column(Integer, primary_key=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, 
+            server_default=text("gen_random_uuid()"))
     channel_id = Column(String, unique=True)
     channel_name = Column(String)
     topic = Column(String)
