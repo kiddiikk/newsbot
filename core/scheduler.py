@@ -5,7 +5,7 @@ from typing import Dict, Callable, List
 import asyncio
 import logging
 from database.crud import *
-from database.models import SessionLocal, Post
+from database.models import SessionLocal, Post, User
 from core.rss_parser import RSSParser
 from core.ai_processor import AIProcessor
 from core.publisher import Publisher
@@ -61,6 +61,16 @@ class Scheduler:
             max_instances=1
         )
         logger.info("Задача check_expired_access добавлена в планировщик")
+
+        # 👇 НОВОЕ: синхронизация подписок из gramkit каждые 5 минут
+        self.scheduler.add_job(
+            self.sync_subscriptions_from_gramkit,
+            IntervalTrigger(seconds=300),
+            id='subscription_sync',
+            replace_existing=True,
+            max_instances=1
+        )
+        logger.info("Задача sync_subscriptions_from_gramkit добавлена в планировщик")
 
         self.scheduler.start()
         logger.info("Планировщик запущен")
@@ -307,6 +317,85 @@ class Scheduler:
             logger.error(f"Ошибка в check_expired_access: {e}", exc_info=True)
         finally:
             db.close()
+
+    # ============================================================
+    # 👇 НОВЫЙ МЕТОД: Синхронизация подписок из gramkit
+    # ============================================================
+    async def sync_subscriptions_from_gramkit(self):
+        """Синхронизировать подписки из gramkit (subscriptions) → newsbot (users.subscription_until)."""
+        from sqlalchemy import text
+
+        logger.info("=== СИНХРОНИЗАЦИЯ ПОДПИСОК ИЗ GRAMKIT ===")
+        db = SessionLocal()
+        try:
+            # Получить активные подписки из gramkit
+            rows = db.execute(text("""
+                SELECT u.telegram_id, s.product_id, s.end_date
+                FROM subscriptions s
+                JOIN users u ON s.user_id = u.id
+                WHERE s.status IN ('ACTIVE', 'CANCELED')
+                  AND s.end_date > NOW()
+            """)).fetchall()
+
+            logger.info(f"Найдено активных подписок в gramkit: {len(rows)}")
+
+            plan_mapping = {
+                "FEELIT_START": "start",
+                "FEELIT_PRO": "pro",
+                "FEELIT_BUSINESS": "business",
+                # legacy — на случай старых подписок
+                "WEEK_SUB_V3": "start",
+                "MONTH_SUB_V3": "pro",
+                "YEAR_SUB_V3": "business",
+                "WEEK_SUB_V2": "start",
+                "MONTH_SUB_V2": "pro",
+                "YEAR_SUB_V2": "business",
+                "WEEK_SUB": "start",
+                "MONTH_SUB": "pro",
+                "YEAR_SUB": "business",
+            }
+
+            updated = 0
+            for telegram_id, product_id, end_date in rows:
+                plan_key = plan_mapping.get(product_id)
+                if not plan_key:
+                    logger.debug(f"Неизвестный product_id: {product_id}")
+                    continue
+
+                user = db.query(User).filter(User.telegram_id == telegram_id).first()
+                if not user:
+                    logger.warning(f"Юзер с tg={telegram_id} не найден в newsbot")
+                    continue
+
+                current_until = user.subscription_until
+                current_plan = user.subscription_plan
+
+                need_update = (
+                    current_until is None
+                    or end_date > current_until
+                    or current_plan != plan_key
+                )
+
+                if need_update:
+                    user.subscription_until = end_date
+                    user.subscription_plan = plan_key
+                    updated += 1
+                    logger.info(
+                        f"Обновлена подписка: tg={telegram_id}, plan={plan_key}, until={end_date}"
+                    )
+
+            if updated > 0:
+                db.commit()
+                logger.info(f"✅ Обновлено подписок: {updated}")
+            else:
+                logger.info("Подписки не требуют обновления")
+
+        except Exception as e:
+            logger.error(f"Ошибка синхронизации подписок: {e}", exc_info=True)
+            db.rollback()
+        finally:
+            db.close()
+            logger.info("=== СИНХРОНИЗАЦИЯ ЗАВЕРШЕНА ===")
 
     def stop(self):
         logger.info("Остановка планировщика задач")
