@@ -46,7 +46,7 @@ async def start_command(message: Message, state: FSMContext):
     db.close()
 
     is_admin = message.from_user.id in ADMIN_IDS
-    
+
     welcome_text = (
         "👋 <b>Привет! Я бот команды — FEEL IT - AI LAB</b>\n\n"
         "🤖 Я — твой личный контент-менеджер на автопилоте. "
@@ -60,7 +60,7 @@ async def start_command(message: Message, state: FSMContext):
         "👇 <b>Тыкай на кнопки ниже</b> — я покажу, как всё настроить. "
         "Это займёт 2 минуты, а канал будет жить сам."
     )
-    
+
     await message.answer(
         welcome_text,
         reply_markup=keyboards.main_menu(is_admin=is_admin),
@@ -83,7 +83,7 @@ async def back_to_main_menu(callback: CallbackQuery, state: FSMContext):
 async def show_channels(event: Message | CallbackQuery):
     db = SessionLocal()
     user = get_or_create_user(db, event.from_user.id, event.from_user.username)
-    channels = get_user_channels(db, user.id)
+    channels = get_user_channels(db, user.telegram_id)  # ✅ ФИКС: user.id → user.telegram_id
     db.close()
 
     text = "У вас пока нет каналов. Хотите добавить первый?" if not channels else "📊 Ваши каналы:"
@@ -180,10 +180,10 @@ async def process_channel_topic(message: Message, state: FSMContext):
     user = get_or_create_user(db, message.from_user.id, message.from_user.username)
 
     channel = create_channel(
-        db, user.id, data['channel_id'],
+        db, user.telegram_id, data['channel_id'],  # ✅ ФИКС: user.id → user.telegram_id
         data['channel_name'], message.text
     )
-    
+
     # 👇 АКТИВИРУЕМ ПРОБНЫЙ ПЕРИОД
     from config.settings import ADMIN_IDS, TRIAL_DAYS
     if message.from_user.id not in ADMIN_IDS and not user.trial_used:
@@ -193,7 +193,7 @@ async def process_channel_topic(message: Message, state: FSMContext):
         trial_msg = f"\n\n🎁 Вам активирован пробный период на {TRIAL_DAYS} день!"
     else:
         trial_msg = ""
-    
+
     db.close()
     await state.clear()
 
@@ -202,7 +202,6 @@ async def process_channel_topic(message: Message, state: FSMContext):
         "Теперь добавьте RSS-источники.",
         reply_markup=keyboards.channel_menu(channel.id)
     )
-
 
 
 @router.callback_query(F.data.startswith("channel_"))
@@ -249,14 +248,12 @@ async def channel_menu(callback: CallbackQuery, state: FSMContext):
         f"{status_extra}"
     )
 
+    # ✅ УБРАН дублирующийся edit_text
     await callback.message.edit_text(
         text,
         reply_markup=keyboards.channel_menu(channel_id)
     )
-    await callback.message.edit_text(
-        text,
-        reply_markup=keyboards.channel_menu(channel_id)
-    )
+
 
 @router.callback_query(F.data.startswith("rss_"))
 async def rss_sources_menu(callback: CallbackQuery):
@@ -423,6 +420,7 @@ async def process_manual_rss(message: Message, state: FSMContext):
 
     await state.clear()
 
+
 @router.callback_query(F.data.startswith("create_"))
 async def create_post_start(callback: CallbackQuery, bot: Bot):
     channel_id = int(callback.data.split("_")[1])
@@ -435,11 +433,11 @@ async def create_post_start(callback: CallbackQuery, bot: Bot):
         await callback.answer("Канал не найден!", show_alert=True)
         db.close()
         return
-        
-            # 👇 ПРОВЕРКА ДОСТУПА
+
+    # 👇 ПРОВЕРКА ДОСТУПА
     from config.settings import ADMIN_IDS
     from database.crud import has_access
-    
+
     if not has_access(db, channel_id, ADMIN_IDS):
         await callback.answer(
             "❌ Подписка неактивна. Оформите в меню «💎 Подписка».",
@@ -447,9 +445,9 @@ async def create_post_start(callback: CallbackQuery, bot: Bot):
         )
         db.close()
         return
-    
+
     sources = db.query(RSSSource).filter_by(channel_id=channel_id, is_active=True).all()
-    
+
     if not sources:
         await callback.answer("Сначала добавьте RSS источники!", show_alert=True)
         db.close()
@@ -517,7 +515,7 @@ async def create_post_start(callback: CallbackQuery, bot: Bot):
                 return
 
             await msg.edit_text("🧠 Обрабатываю...")
-            
+
             # ФИЛЬТРАЦИЯ ДУБЛЕЙ ПО GUID
             filtered_entries = []
             for e in all_entries:
@@ -530,15 +528,15 @@ async def create_post_start(callback: CallbackQuery, bot: Bot):
                     filtered_entries.append(e)
                 else:
                     logger.info(f"Дубль пропущен: {e.get('title', '')[:50]}")
-            
+
             if not filtered_entries:
                 await msg.edit_text("❌ Все новости уже опубликованы.")
                 db.close()
                 return
-            
+
             all_entries = filtered_entries
             logger.info(f"После фильтра дублей: {len(all_entries)}")
-            
+
             entry = random.choice(all_entries)
             # 👇 РАЗНЫЕ ПРОМПТЫ
             if is_fun_post:
@@ -571,7 +569,7 @@ async def create_post_start(callback: CallbackQuery, bot: Bot):
             await msg.edit_text("🎨 Генерирую картинку...")
             image_prompt = await ai_processor.generate_image_prompt(entry.get('title', ''))
             logger.info(f"Промпт для картинки: {image_prompt}")
-            
+
             from core.image_generator import generate_image
             generated_path = generate_image(image_prompt)
             if generated_path:
@@ -830,6 +828,8 @@ async def toggle_moderation(callback: CallbackQuery):
         await callback.answer(f"Режим модерации {mode_text}")
         await ai_settings_menu(callback)
     db.close()
+
+
 # ============================================================
 # ОПЛАТА ПОДПИСКИ ЧЕРЕЗ TELEGRAM STARS
 # ============================================================
@@ -845,7 +845,7 @@ async def subscribe_menu(callback: CallbackQuery):
         )])
     keyboard.append([InlineKeyboardButton(text="🎁 Пробный период", callback_data="trial_info")])
     keyboard.append([InlineKeyboardButton(text="◀️ Назад", callback_data="back_main")])
-    
+
     await callback.message.edit_text(
         "💎 Выберите тариф подписки:\n\n"
         "🚀 Старт — 1 канал, 10 постов/день\n"
@@ -860,7 +860,7 @@ async def send_invoice(callback: CallbackQuery):
     from config.settings import SUBSCRIPTION_PRICES
     plan_key = callback.data.split("_")[1]
     plan = SUBSCRIPTION_PRICES[plan_key]
-    
+
     await callback.bot.send_invoice(
         chat_id=callback.from_user.id,
         title=f"Подписка FEEL IT — AI LAB ({plan['name']})",
@@ -880,24 +880,26 @@ async def pre_checkout(pre_checkout_query: PreCheckoutQuery):
 @router.message(F.successful_payment)
 async def successful_payment(message: Message):
     payload = message.successful_payment.invoice_payload
-    
+
     if payload.startswith("sub_"):
         plan_key = payload.split("_")[1]
         days = 30
-        
+
         db = SessionLocal()
         user = get_or_create_user(db, message.from_user.id)
         user.subscription_until = datetime.utcnow() + timedelta(days=days)
         user.subscription_plan = plan_key  # 👈 сохраняем тариф
         db.commit()
         db.close()
-        
+
         from config.settings import SUBSCRIPTION_PRICES
         plan = SUBSCRIPTION_PRICES[plan_key]
         await message.answer(
             f"✅ Подписка «{plan['name']}» активирована на {days} дней!\n\n"
             f"📊 Лимиты: {plan['channels']} канал(ов), {plan['posts_per_day']} постов/день"
         )
+
+
 # ============================================================
 # МОДЕРАЦИЯ ПОСТОВ
 # ============================================================
@@ -905,16 +907,16 @@ async def successful_payment(message: Message):
 @router.callback_query(F.data.startswith("approve_"))
 async def approve_post(callback: CallbackQuery, bot: Bot):
     post_id = int(callback.data.split("_")[1])
-    
+
     db = SessionLocal()
     post = db.query(Post).filter(Post.id == post_id).first()
     if not post:
         await callback.answer("Пост не найден!", show_alert=True)
         db.close()
         return
-    
+
     channel = post.channel
-    
+
     # Публикуем
     publisher = Publisher(bot)
     message_id = await publisher.publish_post(
@@ -922,7 +924,7 @@ async def approve_post(callback: CallbackQuery, bot: Bot):
         post.processed_content,
         post.media_urls
     )
-    
+
     if message_id:
         update_post_status(db, post_id, "published", message_id)
         await callback.message.edit_text(
@@ -930,20 +932,21 @@ async def approve_post(callback: CallbackQuery, bot: Bot):
         )
     else:
         await callback.answer("❌ Ошибка публикации", show_alert=True)
-    
+
     db.close()
 
 
 @router.callback_query(F.data.startswith("reject_"))
 async def reject_post(callback: CallbackQuery):
     post_id = int(callback.data.split("_")[1])
-    
+
     db = SessionLocal()
     update_post_status(db, post_id, "rejected")
     db.close()
-    
+
     await callback.message.edit_text("❌ Пост отклонён.")
-    
+
+
 @router.callback_query(F.data == "what_i_can")
 async def what_i_can(callback: CallbackQuery):
     keyboard = [
@@ -992,7 +995,7 @@ async def about_tariffs(callback: CallbackQuery):
         text += f"<b>{plan['name']}</b> — {plan['price']} ⭐\n"
         text += f"• {plan['channels']} канал(ов)\n"
         text += f"• {plan['posts_per_day']} постов/день\n\n"
-    
+
     await callback.message.edit_text(
         text,
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -1014,6 +1017,8 @@ async def contact(callback: CallbackQuery):
         ]),
         parse_mode="HTML"
     )
+
+
 @router.callback_query(F.data == "trial_info")
 async def trial_info(callback: CallbackQuery):
     keyboard = [
@@ -1040,24 +1045,24 @@ async def trial_info(callback: CallbackQuery):
 @router.callback_query(F.data == "check_trial_subscription")
 async def check_trial_subscription(callback: CallbackQuery, bot: Bot):
     from config.settings import ADMIN_IDS
-    
+
     user_id = callback.from_user.id
-    
+
     try:
         member = await bot.get_chat_member("@feelit_ailab", user_id)
         if member.status in ("creator", "administrator", "member"):
             db = SessionLocal()
             user = get_or_create_user(db, user_id)
-            
+
             if user.trial_used:
                 await callback.answer("❌ Вы уже использовали пробный период!", show_alert=True)
                 db.close()
                 return
-            
+
             user.trial_used = True
             db.commit()
             db.close()
-            
+
             await callback.message.edit_text(
                 "✅ <b>Пробный период активирован!</b>\n\n"
                 "Теперь добавь канал и настрой RSS — бот начнёт работать.",
