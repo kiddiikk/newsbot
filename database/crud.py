@@ -23,12 +23,13 @@ def get_or_create_user(db: Session, telegram_id: int, username: str = None):
     return user
 
 
-def create_channel(db: Session, user_id: int, channel_id: str, channel_name: str, topic: str):
+def create_channel(db: Session, owner_telegram_id: int, channel_id: str, channel_name: str, topic: str):
+    """owner_telegram_id — Telegram ID владельца (BigInteger), не UUID."""
     channel = Channel(
         channel_id=channel_id,
         channel_name=channel_name,
         topic=topic,
-        owner_id=user_id
+        owner_id=owner_telegram_id
     )
     db.add(channel)
     db.commit()
@@ -36,8 +37,9 @@ def create_channel(db: Session, user_id: int, channel_id: str, channel_name: str
     return channel
 
 
-def get_user_channels(db: Session, user_id: int):
-    return db.query(Channel).filter(Channel.owner_id == user_id).all()
+def get_user_channels(db: Session, owner_telegram_id: int):
+    """owner_telegram_id — Telegram ID владельца (BigInteger), не UUID."""
+    return db.query(Channel).filter(Channel.owner_id == owner_telegram_id).all()
 
 
 def add_rss_source(db: Session, channel_id: int, url: str, name: str, source_type: str = "news"):
@@ -62,14 +64,12 @@ def create_post(db: Session, channel_id: int, source_url: str, title: str, conte
 
     post_hash = generate_post_hash(title + " " + content)
 
-
     existing_post = db.query(Post).filter(
         Post.channel_id == channel_id,
         Post.hash == post_hash
     ).first()
 
     if existing_post:
-
         return None
 
     post = Post(
@@ -180,6 +180,8 @@ def get_moderation_posts(db: Session, channel_id: int):
         Post.channel_id == channel_id,
         Post.status == "moderation"
     ).all()
+
+
 def get_user_by_telegram_id(db: Session, telegram_id: int):
     return db.query(User).filter(User.telegram_id == telegram_id).first()
 
@@ -197,15 +199,15 @@ def has_access(db: Session, channel_id: int, admin_ids: list) -> bool:
     channel = db.query(Channel).filter(Channel.id == channel_id).first()
     if not channel:
         return False
-    
+
     owner = channel.owner
     if owner.telegram_id in admin_ids:
         return True
-    
+
     now = datetime.utcnow()
     if channel.trial_until and channel.trial_until > now:
         return True
     if owner.subscription_until and owner.subscription_until > now:
         return True
-    
+
     return False
