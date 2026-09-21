@@ -11,7 +11,11 @@ SessionLocal = sessionmaker(bind=engine)
 
 class User(Base):
     __tablename__ = "users"
-    id = Column(Integer, primary_key=True)
+    # ⚠️ users.id в БД — UUID (управляется gramkit).
+    # Бот НЕ создаёт эту таблицу, только читает/обновляет по telegram_id.
+    __table_args__ = {'extend_existing': True}
+
+    id = Column(Integer, primary_key=True)  # не используется ботом напрямую
     telegram_id = Column(Integer, unique=True, index=True)
     username = Column(String)
     is_admin = Column(Boolean, default=False)
@@ -24,18 +28,21 @@ class User(Base):
 
 class Channel(Base):
     __tablename__ = "channels"
+    __table_args__ = {'extend_existing': True}
+
     id = Column(Integer, primary_key=True)
     channel_id = Column(String, unique=True)
     channel_name = Column(String)
     topic = Column(String)
-    owner_id = Column(Integer, ForeignKey("users.id"))
+    # ⚠️ FK убран: users.id в БД — UUID, несовместим с Integer
+    owner_id = Column(Integer, index=True)
     is_active = Column(Boolean, default=True)
     post_interval = Column(Integer, default=7200)
     moderation_mode = Column(Boolean, default=False)
     ai_model = Column(String, default=DEFAULT_AI_MODEL)
     ai_prompt = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
-    owner = relationship("User", back_populates="channels")
+    owner = relationship("User", back_populates="channels", primaryjoin="foreign(Channel.owner_id) == User.telegram_id")
     rss_sources = relationship("RSSSource", back_populates="channel")
     posts = relationship("Post", back_populates="channel")
     settings = Column(JSON, default={})
@@ -45,6 +52,8 @@ class Channel(Base):
 
 class RSSSource(Base):
     __tablename__ = "rss_sources"
+    __table_args__ = {'extend_existing': True}
+
     id = Column(Integer, primary_key=True)
     url = Column(String)
     name = Column(String)
@@ -54,10 +63,13 @@ class RSSSource(Base):
     last_guid = Column(String)
     error_count = Column(Integer, default=0)
     channel = relationship("Channel", back_populates="rss_sources")
-    source_type = Column(String, default="news")  # "news" или "fun"
+    source_type = Column(String, default="news")
+
 
 class Post(Base):
     __tablename__ = "posts"
+    __table_args__ = {'extend_existing': True}
+
     id = Column(Integer, primary_key=True)
     channel_id = Column(Integer, ForeignKey("channels.id"))
     source_url = Column(String)
@@ -71,6 +83,3 @@ class Post(Base):
     message_id = Column(Integer)
     hash = Column(String, index=True, nullable=True)
     channel = relationship("Channel", back_populates="posts")
-
-
-Base.metadata.create_all(engine)
