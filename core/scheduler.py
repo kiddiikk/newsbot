@@ -162,11 +162,45 @@ class Scheduler:
                         logger.info(f"Картинка сгенерирована: {generated_path}")
 
                 # проверка на дубликаты
+                # === ДЕДУП ===
+                # 1. По GUID от RSS (самый надёжный)
+                guid = entry.get('guid') or entry.get('link') or entry.get('id')
+                if guid:
+                    existing_by_guid = db.query(Post).filter(
+                        Post.channel_id == channel.id,
+                        Post.source_url == guid
+                    ).first()
+                    if existing_by_guid:
+                        logger.info(f"Дубликат по GUID пропущен: {entry.get('title', '')}")
+                        continue
+
+                # 2. По нормализованному title
+                import re
+                def normalize_title(t: str) -> str:
+                    return re.sub(r'\W+', '', t.lower())[:80]
+
+                norm_title = normalize_title(entry.get('title', ''))
+                if norm_title:
+                    existing_by_title = db.query(Post).filter(
+                        Post.channel_id == channel.id,
+                        Post.original_title.like(f'%{norm_title[:40]}%')
+                    ).first()
+                    if existing_by_title:
+                        logger.info(f"Дубликат по title пропущен: {entry.get('title', '')}")
+                        continue
+
+                # 3. По hash (страховка)
                 post_hash = generate_post_hash(entry['title'] + " " + entry['content'])
                 existing_post = db.query(Post).filter(
                     Post.channel_id == channel.id,
                     Post.hash == post_hash
                 ).first()
+                if existing_post:
+                    logger.info(f"Дубликат по hash пропущен: {entry.get('title', '')}")
+                    continue
+                # === КОНЕЦ ДЕДУПА ===
+
+                last_post = db.query(Post).filter(
 
                 if existing_post:
                     logger.info(f"Дубликат поста обнаружен и пропущен: {entry.get('title', '')}")
