@@ -888,9 +888,64 @@ async def successful_payment(message: Message):
         db = SessionLocal()
         user = get_or_create_user(db, message.from_user.id)
         user.subscription_until = datetime.utcnow() + timedelta(days=days)
-        user.subscription_plan = plan_key  # 👈 сохраняем тариф
+        user.subscription_plan = plan_key
         db.commit()
+
+        # 👇 СИНХРОНИЗАЦИЯ С GRAMKIT — создаём запись в subscriptions
+        try:
+            from sqlalchemy import text
+            from uuid import uuid4
+
+            product_id_map = {
+                "start": "FEELIT_START",
+                "pro": "FEELIT_PRO",
+                "business": "FEELIT_BUSINESS",
+            }
+            gramkit_product_id = product_id_map.get(plan_key)
+
+            if gramkit_product_id:
+                # Найти UUID юзера (gramkit использует UUID, newsbot — Integer id)
+                user_uuid_row = db.execute(text("""
+                    SELECT id FROM users WHERE telegram_id = :tg LIMIT 1
+                """), {"tg": message.from_user.id}).fetchone()
+
+                if user_uuid_row:
+                    user_uuid = user_uuid_row[0]
+                    db.execute(text("""
+                        INSERT INTO subscriptions 
+                        (id, user_id, product_id, provider_id, status, currency,
+                         start_date, end_date, recurring_details, created_at, updated_at)
+                        VALUES 
+                        (:id, :uid, :pid, 'TELEGRAM_STARS', 'ACTIVE', 'XTR',
+                         :now, :end, '{}', :now, :now)
+                    """), {
+                        "id": str(uuid4()),
+                        "uid": user_uuid,
+                        "pid": gramkit_product_id,
+                        "now": datetime.utcnow(),
+                        "end": user.subscription_until,
+                    })
+                    db.commit()
+                    logger.info(
+                        f"✅ Создана запись в subscriptions: "
+                        f"tg={message.from_user.id}, product={gramkit_product_id}"
+                    )
+                else:
+                    logger.warning(
+                        f"UUID для tg={message.from_user.id} не найден"
+                    )
+        except Exception as e:
+            logger.error(f"Ошибка синхронизации с gramkit: {e}", exc_info=True)
+            # НЕ откатываем — подписка в users уже создана
+
         db.close()
+
+        from config.settings import SUBSCRIPTION_PRICES
+        plan = SUBSCRIPTION_PRICES[plan_key]
+        await message.answer(
+            f"✅ Подписка «{plan['name']}» активирована на {days} дней!\n\n"
+            f"📊 Лимиты: {plan['channels']} канал(ов), {plan['posts_per_day']} постов/день"
+        )
 
         from config.settings import SUBSCRIPTION_PRICES
         plan = SUBSCRIPTION_PRICES[plan_key]
