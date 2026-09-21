@@ -98,8 +98,43 @@ class RSSParser:
                 if src and src.startswith('http'):
                     media_urls.append(src)
 
-        return list(dict.fromkeys(media_urls))[:1]
+        # 👇 ФИКС REDDIT: preview.redd.it → i.redd.it + убираем query-параметры
+        fixed_urls = []
+        for url in media_urls:
+            fixed_urls.append(self._fix_media_url(url))
 
+        return list(dict.fromkeys(fixed_urls))[:1]
+
+    @staticmethod
+    def _fix_media_url(url: str) -> str:
+        """
+        Чинит URL картинок от Reddit и других источников.
+        - preview.redd.it → i.redd.it (оригинал вместо превью)
+        - Убирает query-параметры сжатия (?width=...&format=...)
+        - Заменяет мелкие превью на оригиналы где возможно
+        """
+        # Reddit: preview.redd.it → i.redd.it
+        if "preview.redd.it" in url:
+            url = url.replace("preview.redd.it", "i.redd.it")
+            # Убираем параметры сжатия
+            if "?" in url:
+                url = url.split("?")[0]
+
+        # Twitter/X: pbs.twimg.com маленькие превью → оригиналы
+        if "pbs.twimg.com" in url and "?" in url:
+            # Если есть format=jpg — оставляем name=orig
+            if "name=" not in url:
+                url = url + "&name=orig"
+            else:
+                url = url.split("&name=")[0] + "&name=orig"
+
+        # Убираем «мелкие» параметры у медиа-прокси
+        # (не трогаем Unsplash, статичные CDN — там параметры нужны)
+        for small_param in ["?w=150", "?w=300", "&w=150", "&w=300"]:
+            if small_param in url:
+                url = url.replace(small_param, "")
+
+        return url
     async def download_image(self, url: str) -> Optional[bytes]:
         if not self.session:
             self.session = aiohttp.ClientSession()
