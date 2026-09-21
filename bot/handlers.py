@@ -13,6 +13,8 @@ from config.settings import ADMIN_IDS
 from datetime import datetime, timedelta
 from utils.helpers import generate_post_hash
 from aiogram.types import LabeledPrice, PreCheckoutQuery
+from sqlalchemy import text
+from uuid import uuid4
 import random
 import logging
 
