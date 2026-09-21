@@ -201,12 +201,6 @@ class Scheduler:
                 # === КОНЕЦ ДЕДУПА ===
 
                 last_post = db.query(Post).filter(
-
-                if existing_post:
-                    logger.info(f"Дубликат поста обнаружен и пропущен: {entry.get('title', '')}")
-                    continue
-
-                last_post = db.query(Post).filter(
                     Post.channel_id == channel.id
                 ).order_by(Post.scheduled_time.desc()).first()
 
