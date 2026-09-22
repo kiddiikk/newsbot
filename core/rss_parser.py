@@ -98,43 +98,37 @@ class RSSParser:
                 if src and src.startswith('http'):
                     media_urls.append(src)
 
-        # 👇 ФИКС REDDIT: preview.redd.it → i.redd.it + убираем query-параметры
-        fixed_urls = []
-        for url in media_urls:
-            fixed_urls.append(self._fix_media_url(url))
+        # 👇 ФИКС: чиним URL превью от Reddit и Twitter
+        fixed_urls = [self._fix_media_url(url) for url in media_urls]
 
         return list(dict.fromkeys(fixed_urls))[:1]
 
     @staticmethod
     def _fix_media_url(url: str) -> str:
         """
-        Чинит URL картинок от Reddit и других источников.
-        - preview.redd.it → i.redd.it (оригинал вместо превью)
-        - Убирает query-параметры сжатия (?width=...&format=...)
-        - Заменяет мелкие превью на оригиналы где возможно
+        preview.redd.it → i.redd.it (оригинал вместо превью).
+        Убираем query-параметры сжатия.
         """
         # Reddit: preview.redd.it → i.redd.it
         if "preview.redd.it" in url:
             url = url.replace("preview.redd.it", "i.redd.it")
-            # Убираем параметры сжатия
             if "?" in url:
                 url = url.split("?")[0]
 
-        # Twitter/X: pbs.twimg.com маленькие превью → оригиналы
-        if "pbs.twimg.com" in url and "?" in url:
-            # Если есть format=jpg — оставляем name=orig
-            if "name=" not in url:
-                url = url + "&name=orig"
-            else:
+        # Twitter/X: pbs.twimg.com → оригинал
+        if "pbs.twimg.com" in url:
+            if "&name=" in url:
                 url = url.split("&name=")[0] + "&name=orig"
+            elif "?" in url:
+                url = url + "&name=orig"
 
-        # Убираем «мелкие» параметры у медиа-прокси
-        # (не трогаем Unsplash, статичные CDN — там параметры нужны)
-        for small_param in ["?w=150", "?w=300", "&w=150", "&w=300"]:
-            if small_param in url:
-                url = url.replace(small_param, "")
+        # Убираем мелкие размеры
+        for param in ["?w=150", "?w=300", "&w=150", "&w=300"]:
+            if param in url:
+                url = url.replace(param, "")
 
         return url
+
     async def download_image(self, url: str) -> Optional[bytes]:
         if not self.session:
             self.session = aiohttp.ClientSession()
