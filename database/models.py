@@ -2,7 +2,6 @@ from sqlalchemy import (
     create_engine, Column, Integer, String, Boolean, DateTime,
     ForeignKey, Text, JSON, BigInteger
 )
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
 from datetime import datetime
@@ -22,8 +21,8 @@ class User(Base):
     __table_args__ = {'extend_existing': True}
 
     id = Column(UUID(as_uuid=True), primary_key=True,
-            server_default=text("gen_random_uuid()"))  # UUID, не Integer — иначе маппинг сломается
-    telegram_id = Column(BigInteger, unique=True, index=True)  # BigInteger, т.к. ID Telegram > 2^31
+            server_default=text("gen_random_uuid()"))
+    telegram_id = Column(BigInteger, unique=True, index=True)
     username = Column(String)
     is_admin = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -32,7 +31,6 @@ class User(Base):
     subscription_plan = Column(String, nullable=True)
     user_type = Column(String, nullable=False, default='REGISTERED', server_default='REGISTERED')
 
-    # ✅ primaryjoin обязателен с обеих сторон, т.к. FK убран
     channels = relationship(
         "Channel",
         back_populates="owner",
@@ -44,13 +42,11 @@ class Channel(Base):
     __tablename__ = "channels"
     __table_args__ = {'extend_existing': True}
 
-    id = Column(UUID(as_uuid=True), primary_key=True, 
-            server_default=text("gen_random_uuid()"))
+    id = Column(Integer, primary_key=True)          # ← ФИКС: Integer (в БД integer)
     channel_id = Column(String, unique=True)
     channel_name = Column(String)
     topic = Column(String)
-    # ⚠️ FK убран: users.id в БД — UUID, несовместим с Integer/BigInteger
-    owner_id = Column(BigInteger, index=True)  # BigInteger — как telegram_id
+    owner_id = Column(BigInteger, index=True)       # BigInteger — как telegram_id
     is_active = Column(Boolean, default=True)
     post_interval = Column(Integer, default=7200)
     moderation_mode = Column(Boolean, default=False)
