@@ -103,7 +103,7 @@ async def process_content(self, entry: Dict, channel) -> str:
                 return await self._enhanced_fallback_format(entry, topic)
 
 
-            final_post = self._guaranteed_formatting(raw_response, topic)
+            final_post = self._guaranteed_formatting(raw_response, topic, is_owner=is_owner)
             logger.info(f"Успешно обработан контент для поста. Длина: {len(final_post)} символов")
             logger.debug(f"Финальный пост: {final_post}")
             return final_post[:1500]  # Увеличенное ограничение длины
