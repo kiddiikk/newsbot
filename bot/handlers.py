@@ -775,13 +775,24 @@ async def ai_prompt_change_start(callback: CallbackQuery, state: FSMContext):
     channel_id = int(callback.data.split("_")[2])
     db = SessionLocal()
     channel = db.query(Channel).filter_by(id=channel_id).first()
-    db.close()
 
     if not channel:
         await callback.answer("Канал не найден!", show_alert=True)
+        db.close()
+        return
+
+    # 👇 ПРОВЕРКА ТАРИФА
+    owner = channel.owner
+    if not can_use_feature(owner, "custom_prompt"):
+        await callback.answer(
+            "❌ Свой промпт доступен только в тарифах «Про» и «Бизнес»",
+            show_alert=True
+        )
+        db.close()
         return
 
     current_prompt = channel.ai_prompt or "Пока не задан. Будет использован стандартный."
+    db.close()
 
     await state.update_data(channel_id=channel_id)
     await callback.message.edit_text(
