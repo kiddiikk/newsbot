@@ -1,5 +1,6 @@
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
+from apscheduler.triggers.cron import CronTrigger
 from datetime import datetime, timedelta
 from typing import Dict, Callable, List
 import asyncio
@@ -31,57 +32,11 @@ class Scheduler:
             ]
         ]
         return InlineKeyboardMarkup(inline_keyboard=keyboard)
-        
-    async def cleanup_expired_subscriptions(self):
-        """
-        Раз в час: сбрасывает plan/subscription_until/extra_seats 
-        у юзеров с истёкшей подпиской.
-        """
-        from datetime import timezone
-        
-        logger.info("=== ОЧИСТКА ИСТЁКШИХ ПОДПИСОК ===")
-        db = SessionLocal()
-        try:
-            now = datetime.now(timezone.utc)
-
-            expired = db.query(User).filter(
-                User.subscription_until.isnot(None),
-                User.subscription_until < now,
-            ).all()
-
-            logger.info(f"Найдено истёкших: {len(expired)}")
-
-            count = 0
-            for u in expired:
-                old_plan = u.subscription_plan
-                old_extra = u.extra_seats
-                
-                u.subscription_plan = None
-                u.subscription_until = None
-                u.extra_seats = 0
-                
-                count += 1
-                logger.info(
-                    f"Очищен tg={u.telegram_id}: "
-                    f"plan {old_plan}→None, extra {old_extra}→0"
-                )
-
-            if count > 0:
-                db.commit()
-                logger.info(f"✅ Очищено: {count}")
-            else:
-                logger.info("Нет истёкших подписок")
-
-        except Exception as e:
-            logger.error(f"Ошибка очистки: {e}", exc_info=True)
-            db.rollback()
-        finally:
-            db.close()
-            logger.info("=== ОЧИСТКА ЗАВЕРШЕНА ===")
 
     def start(self):
         logger.info("Запуск планировщика задач")
 
+        # 1. Проверка RSS — каждые 30 минут
         self.scheduler.add_job(
             self.check_rss_sources,
             IntervalTrigger(seconds=1800),
@@ -91,6 +46,7 @@ class Scheduler:
         )
         logger.info("Задача check_rss_sources добавлена в планировщик")
 
+        # 2. Публикация постов — каждую минуту
         self.scheduler.add_job(
             self.publish_scheduled_posts,
             IntervalTrigger(seconds=60),
@@ -100,6 +56,7 @@ class Scheduler:
         )
         logger.info("Задача publish_scheduled_posts добавлена в планировщик")
 
+        # 3. Проверка истёкших триалов — каждый час
         self.scheduler.add_job(
             self.check_expired_access,
             IntervalTrigger(seconds=3600),
@@ -109,7 +66,7 @@ class Scheduler:
         )
         logger.info("Задача check_expired_access добавлена в планировщик")
 
-        # 👇 НОВОЕ: синхронизация подписок из gramkit каждые 5 минут
+        # 4. Синхронизация подписок из gramkit — каждые 5 минут
         self.scheduler.add_job(
             self.sync_subscriptions_from_gramkit,
             IntervalTrigger(seconds=300),
@@ -119,7 +76,7 @@ class Scheduler:
         )
         logger.info("Задача sync_subscriptions_from_gramkit добавлена в планировщик")
 
-        # 👇 НОВОЕ: очистка истёкших подписок каждый час
+        # 5. Очистка истёкших подписок — каждый час
         self.scheduler.add_job(
             self.cleanup_expired_subscriptions,
             IntervalTrigger(seconds=3600),
@@ -128,6 +85,26 @@ class Scheduler:
             max_instances=1
         )
         logger.info("Задача cleanup_expired_subscriptions добавлена в планировщик")
+
+        # 6. Недельный отчёт — по воскресеньям в 20:00
+        self.scheduler.add_job(
+            self.send_weekly_reports,
+            CronTrigger(day_of_week='sun', hour=20, minute=0),
+            id='weekly_report',
+            replace_existing=True,
+            max_instances=1
+        )
+        logger.info("Задача send_weekly_reports добавлена в планировщик")
+
+        # 7. Ежедневный снимок статистики — в 23:59
+        self.scheduler.add_job(
+            self.snapshot_channel_stats,
+            CronTrigger(hour=23, minute=59),
+            id='daily_snapshot',
+            replace_existing=True,
+            max_instances=1
+        )
+        logger.info("Задача snapshot_channel_stats добавлена в планировщик")
 
         self.scheduler.start()
         logger.info("Планировщик запущен")
@@ -153,7 +130,6 @@ class Scheduler:
                 processed_count = 0
                 for source in sources:
                     try:
-                        # 👇 ПРОВЕРКА ДОСТУПА
                         if not has_access(db, source.channel_id, ADMIN_IDS):
                             logger.info(f"Канал {source.channel.channel_name}: доступ закрыт, пропускаем")
                             continue
@@ -193,12 +169,10 @@ class Scheduler:
             try:
                 logger.info(f"Обработка записи: {entry.get('title', '')}")
 
-                # обработка контента с помощью AI
                 processed_content = await self.ai_processor.process_content(entry, channel)
 
                 logger.debug(f"Обработанный контент: {processed_content[:100]}...")
 
-                # 👇 ГЕНЕРАЦИЯ КАРТИНКИ, ЕСЛИ ЕЁ НЕТ
                 media = entry.get('media', [])
                 if not media:
                     logger.info("Картинки нет, генерирую...")
@@ -211,9 +185,7 @@ class Scheduler:
                         media = [generated_path]
                         logger.info(f"Картинка сгенерирована: {generated_path}")
 
-                # проверка на дубликаты
                 # === ДЕДУП ===
-                # 1. По GUID от RSS (самый надёжный)
                 guid = entry.get('guid') or entry.get('link') or entry.get('id')
                 if guid:
                     existing_by_guid = db.query(Post).filter(
@@ -224,7 +196,6 @@ class Scheduler:
                         logger.info(f"Дубликат по GUID пропущен: {entry.get('title', '')}")
                         continue
 
-                # 2. По нормализованному title
                 import re
                 def normalize_title(t: str) -> str:
                     return re.sub(r'\W+', '', t.lower())[:80]
@@ -239,7 +210,6 @@ class Scheduler:
                         logger.info(f"Дубликат по title пропущен: {entry.get('title', '')}")
                         continue
 
-                # 3. По hash (страховка)
                 post_hash = generate_post_hash(entry['title'] + " " + entry['content'])
                 existing_post = db.query(Post).filter(
                     Post.channel_id == channel.id,
@@ -298,7 +268,6 @@ class Scheduler:
                         logger.info(f"Канал {channel.channel_name} неактивен, пост {post.id} пропущен")
                         continue
 
-                    # 👇 ПРОВЕРКА ДОСТУПА
                     if not has_access(db, channel.id, ADMIN_IDS):
                         logger.info(f"Канал {channel.channel_name}: доступ закрыт, пост {post.id} пропущен")
                         continue
@@ -309,7 +278,6 @@ class Scheduler:
                         logger.info(f"Канал {channel.channel_name} в режиме модерации, отправляю пост {post.id} владельцу")
                         update_post_status(db, post.id, "moderation")
 
-                        # 👇 ОТПРАВЛЯЕМ ПОСТ ВЛАДЕЛЬЦУ НА ПРОВЕРКУ
                         try:
                             await self.bot.send_message(
                                 channel.owner.telegram_id,
@@ -323,7 +291,6 @@ class Scheduler:
                             logger.error(f"Не удалось отправить пост на модерацию: {e}")
                         continue
 
-                    # 👇 ПРОВЕРКА ЛИМИТА ПОСТОВ/ДЕНЬ
                     from database.crud import can_publish_post
                     can, msg = can_publish_post(db, channel)
                     if not can:
@@ -404,7 +371,7 @@ class Scheduler:
             db.close()
 
     # ============================================================
-    # 👇 НОВЫЙ МЕТОД: Синхронизация подписок из gramkit
+    # СИНХРОНИЗАЦИЯ ПОДПИСОК ИЗ GRAMKIT
     # ============================================================
     async def sync_subscriptions_from_gramkit(self):
         """Синхронизировать подписки из gramkit (subscriptions) → newsbot (users.subscription_until)."""
@@ -413,7 +380,6 @@ class Scheduler:
 
         logger.info("=== СИНХРОНИЗАЦИЯ ПОДПИСОК ИЗ GRAMKIT ===")
 
-        # Шаг 1: читаем из gramkit БД (отдельная сессия)
         gramkit_db = GramkitSessionLocal()
         try:
             rows = gramkit_db.execute(text("""
@@ -430,14 +396,12 @@ class Scheduler:
         finally:
             gramkit_db.close()
 
-        # Шаг 2: обновляем в newsbot БД
         db = SessionLocal()
         try:
             plan_mapping = {
                 "FEELIT_START": "start",
                 "FEELIT_PRO": "pro",
                 "FEELIT_BUSINESS": "business",
-                # legacy — на случай старых подписок
                 "WEEK_SUB_V3": "start",
                 "MONTH_SUB_V3": "pro",
                 "YEAR_SUB_V3": "business",
@@ -490,3 +454,220 @@ class Scheduler:
         finally:
             db.close()
             logger.info("=== СИНХРОНИЗАЦИЯ ЗАВЕРШЕНА ===")
+
+    # ============================================================
+    # ОЧИСТКА ИСТЁКШИХ ПОДПИСОК
+    # ============================================================
+    async def cleanup_expired_subscriptions(self):
+        """
+        Раз в час: сбрасывает plan/subscription_until/extra_seats 
+        у юзеров с истёкшей подпиской.
+        """
+        from datetime import timezone
+
+        logger.info("=== ОЧИСТКА ИСТЁКШИХ ПОДПИСОК ===")
+        db = SessionLocal()
+        try:
+            now = datetime.now(timezone.utc)
+
+            expired = db.query(User).filter(
+                User.subscription_until.isnot(None),
+                User.subscription_until < now,
+            ).all()
+
+            logger.info(f"Найдено истёкших: {len(expired)}")
+
+            count = 0
+            for u in expired:
+                old_plan = u.subscription_plan
+                old_extra = u.extra_seats
+
+                u.subscription_plan = None
+                u.subscription_until = None
+                u.extra_seats = 0
+
+                count += 1
+                logger.info(
+                    f"Очищен tg={u.telegram_id}: "
+                    f"plan {old_plan}→None, extra {old_extra}→0"
+                )
+
+            if count > 0:
+                db.commit()
+                logger.info(f"✅ Очищено: {count}")
+            else:
+                logger.info("Нет истёкших подписок")
+
+        except Exception as e:
+            logger.error(f"Ошибка очистки: {e}", exc_info=True)
+            db.rollback()
+        finally:
+            db.close()
+            logger.info("=== ОЧИСТКА ЗАВЕРШЕНА ===")
+
+    # ============================================================
+    # НЕДЕЛЬНЫЙ ОТЧЁТ
+    # ============================================================
+    async def send_weekly_reports(self):
+        """
+        Раз в неделю: шлёт отчёт владельцам Бизнес-каналов.
+        """
+        from database.crud import get_channel_stats_week
+        from datetime import timezone
+        from database.models import Channel
+
+        logger.info("=== НЕДЕЛЬНЫЙ ОТЧЁТ ===")
+        db = SessionLocal()
+        try:
+            now = datetime.now(timezone.utc)
+
+            business_users = db.query(User).filter(
+                User.subscription_plan == "business",
+                User.subscription_until > now,
+            ).all()
+
+            logger.info(f"Бизнес-юзеров: {len(business_users)}")
+
+            sent = 0
+            for user in business_users:
+                channels = db.query(Channel).filter(
+                    Channel.owner_id == user.telegram_id,
+                    Channel.is_active == True,
+                ).all()
+
+                for channel in channels:
+                    try:
+                        stats = get_channel_stats_week(db, channel.id, days=7)
+                        if stats["posts_count"] == 0:
+                            continue
+
+                        text = self._format_weekly_report(channel, stats)
+                        await self.bot.send_message(
+                            user.telegram_id,
+                            text,
+                            parse_mode="HTML",
+                        )
+                        sent += 1
+                        logger.info(f"Отчёт отправлен: tg={user.telegram_id}, channel={channel.id}")
+                    except Exception as e:
+                        logger.error(f"Ошибка отправки отчёта {channel.id}: {e}")
+
+            logger.info(f"✅ Отправлено отчётов: {sent}")
+        except Exception as e:
+            logger.error(f"Ошибка недельного отчёта: {e}", exc_info=True)
+        finally:
+            db.close()
+            logger.info("=== НЕДЕЛЬНЫЙ ОТЧЁТ ЗАВЕРШЁН ===")
+
+    def _format_weekly_report(self, channel, stats: dict) -> str:
+        """Форматирует отчёт для отправки."""
+        lines = [
+            f"📊 <b>Отчёт за неделю</b>",
+            f"",
+            f"📢 Канал: <b>{channel.channel_name}</b>",
+            f"📝 Постов: <b>{stats['posts_count']}</b>",
+            f"👍 Реакций всего: <b>{stats.get('total_reactions', 0)}</b>",
+            f"📈 Средние реакции: <b>{stats['avg_reactions']}</b>",
+            f"",
+        ]
+
+        if stats["top_posts"]:
+            lines.append("🏆 <b>Топ-3 поста:</b>")
+            for i, p in enumerate(stats["top_posts"], 1):
+                title = (p["title"] or "—")[:50]
+                reactions = p["reactions_total"]
+                lines.append(f"{i}. {title} — 👍 {reactions}")
+
+        if stats.get("best_post"):
+            best = stats["best_post"]
+            reactions_str = " ".join(
+                f"{emoji}{count}" for emoji, count in (best["reactions"] or {}).items()
+            )
+            if reactions_str:
+                lines.append(f"\n✨ Лучший пост: {reactions_str}")
+
+        lines.append(f"\n💎 FEEL IT — AI LAB")
+        return "\n".join(lines)
+
+    # ============================================================
+    # ЕЖЕДНЕВНЫЙ СНИМОК СТАТИСТИКИ
+    # ============================================================
+    async def snapshot_channel_stats(self):
+        """
+        Раз в день (23:59): снимает статистику по всем активным каналам.
+        """
+        from database.models import Channel, ChannelStat, PostMetric
+        from datetime import timezone
+
+        logger.info("=== СНИМОК СТАТИСТИКИ КАНАЛОВ ===")
+        db = SessionLocal()
+        try:
+            now = datetime.now(timezone.utc)
+            today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+            channels = db.query(Channel).filter(Channel.is_active == True).all()
+            logger.info(f"Каналов для снимка: {len(channels)}")
+
+            saved = 0
+            for channel in channels:
+                try:
+                    member_count = 0
+                    try:
+                        member_count = await self.bot.get_chat_member_count(channel.channel_id)
+                    except Exception as e:
+                        logger.warning(f"Не удалось получить подписчиков для {channel.channel_name}: {e}")
+
+                    posts_count = db.query(Post).filter(
+                        Post.channel_id == channel.id,
+                        Post.published_time >= today_start,
+                        Post.status == "published",
+                    ).count()
+
+                    reactions_rows = db.query(PostMetric).join(
+                        Post, Post.id == PostMetric.post_id
+                    ).filter(
+                        Post.channel_id == channel.id,
+                        Post.published_time >= today_start,
+                    ).with_entities(PostMetric.reactions_total).all()
+                    reactions_sum = sum(r[0] for r in reactions_rows) if reactions_rows else 0
+
+                    existing = db.query(ChannelStat).filter(
+                        ChannelStat.channel_id == channel.id,
+                        ChannelStat.date == today_start,
+                    ).first()
+
+                    if existing:
+                        existing.member_count = member_count
+                        existing.posts_count = posts_count
+                        existing.reactions_total = reactions_sum
+                    else:
+                        stat = ChannelStat(
+                            channel_id=channel.id,
+                            date=today_start,
+                            member_count=member_count,
+                            posts_count=posts_count,
+                            reactions_total=reactions_sum,
+                        )
+                        db.add(stat)
+
+                    saved += 1
+                    logger.info(
+                        f"Канал {channel.channel_name}: "
+                        f"members={member_count}, posts={posts_count}, reactions={reactions_sum}"
+                    )
+                except Exception as e:
+                    logger.error(f"Ошибка снимка для {channel.channel_name}: {e}", exc_info=True)
+
+            db.commit()
+            logger.info(f"✅ Снимков сохранено: {saved}")
+        except Exception as e:
+            logger.error(f"Ошибка снимка статистики: {e}", exc_info=True)
+            db.rollback()
+        finally:
+            db.close()
+            logger.info("=== СНИМОК ЗАВЕРШЁН ===")
+
+    def stop(self):
+        logger.info("Остановка планировщика задач")
+        self.scheduler.shutdown()
+        logger.info("Планировщик остановлен")
