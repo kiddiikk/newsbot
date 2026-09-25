@@ -462,3 +462,34 @@ def is_team_owner(db: Session, user_id: int) -> bool:
     """Проверяет, есть ли у юзера свои каналы (значит он owner, не editor)."""
     count = db.query(Channel).filter(Channel.owner_id == user_id).count()
     return count > 0
+
+def get_effective_owner_id(db: Session, user_id: int) -> int:
+    """
+    Возвращает effective owner_id:
+    - Если юзер — editor (участник команды) → owner_id его владельца.
+    - Если юзер — owner → свой user_id.
+    """
+    team = get_owned_team(db, user_id)
+    if team:
+        return team.owner_id  # каналы владельца
+    return user_id  # свои каналы
+
+def check_permission(db: Session, user_id: int, permission: str) -> bool:
+    """
+    Проверяет право:
+    - Owner → True всегда.
+    - Editor → по своему permissions.
+    - Admin → True всегда.
+    """
+    from config.settings import ADMIN_IDS
+    
+    if user_id in ADMIN_IDS:
+        return True
+    
+    team = get_owned_team(db, user_id)
+    if not team:
+        # Не editor → owner, права полные
+        return True
+    
+    perms = team.permissions or {}
+    return bool(perms.get(permission, False))
