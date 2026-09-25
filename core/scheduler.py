@@ -137,14 +137,7 @@ class Scheduler:
                 logger.info(f"Обработка записи: {entry.get('title', '')}")
 
                 # обработка контента с помощью AI
-                processed_content = await self.ai_processor.process_content(
-                    entry,
-                    {
-                        'ai_model': channel.ai_model,
-                        'ai_prompt': channel.ai_prompt,
-                        'topic': channel.topic
-                    }
-                )
+                processed_content = await self.ai_processor.process_content(entry, channel)
 
                 logger.debug(f"Обработанный контент: {processed_content[:100]}...")
 
