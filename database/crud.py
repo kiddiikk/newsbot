@@ -669,7 +669,7 @@ def get_channel_stats_week(db: Session, channel_id: int, days: int = 7) -> dict:
         "best_post": sorted_by_reactions[0] if sorted_by_reactions else None,
     }
 
- def get_channel_stats_comparison(db: Session, channel_id: int) -> dict:
+def get_channel_stats_comparison(db: Session, channel_id: int) -> dict:
     """
     Возвращает сравнение за последние 7 дней и предыдущие 7 дней:
     - посты: было / стало
