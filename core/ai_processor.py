@@ -384,8 +384,10 @@ async def process_content(self, entry: Dict, channel) -> str:
             final_post = f"<b>{title}</b>\n\n"
             final_post += "\n\n".join(clean_paragraphs) + "\n\n"
             final_post += hashtags
-            final_post += "\n\n<b><a href='https://t.me/feelit_ailab'>FEEL IT — AI LAB</a></b>"
 
+            # Брендинг — только для owner-каналов (твоих)
+            if is_owner:
+                final_post += "\n\n<b><a href='https://t.me/feelit_ailab'>FEEL IT — AI LAB</a></b>"
 
             final_post = re.sub(r'\n{3,}', '\n\n', final_post)
             final_post = re.sub(r' +', ' ', final_post)
