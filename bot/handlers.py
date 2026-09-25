@@ -905,11 +905,14 @@ async def subscribe_menu(callback: CallbackQuery):
     keyboard.append([InlineKeyboardButton(text="🎁 Пробный период", callback_data="trial_info")])
     keyboard.append([InlineKeyboardButton(text="◀️ Назад", callback_data="back_main")])
 
+    text_lines = ["💎 Выберите тариф подписки:\n"]
+    for plan in SUBSCRIPTION_PRICES.values():
+        text_lines.append(
+            f"{plan['name']} — {plan['channels']} кан., {plan['posts_per_day']} постов/день"
+        )
+
     await callback.message.edit_text(
-        "💎 Выберите тариф подписки:\n\n"
-        "🚀 Старт — 1 канал, 10 постов/день\n"
-        "💎 Про — 2 канала, 30 постов/день\n"
-        "🏢 Бизнес — 5 каналов, 100 постов/день",
+        "\n".join(text_lines),
         reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard)
     )
 
