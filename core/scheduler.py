@@ -352,21 +352,30 @@ class Scheduler:
     async def sync_subscriptions_from_gramkit(self):
         """Синхронизировать подписки из gramkit (subscriptions) → newsbot (users.subscription_until)."""
         from sqlalchemy import text
+        from database.models import GramkitSessionLocal
 
         logger.info("=== СИНХРОНИЗАЦИЯ ПОДПИСОК ИЗ GRAMKIT ===")
-        db = SessionLocal()
+
+        # Шаг 1: читаем из gramkit БД (отдельная сессия)
+        gramkit_db = GramkitSessionLocal()
         try:
-            # Получить активные подписки из gramkit
-            rows = db.execute(text("""
+            rows = gramkit_db.execute(text("""
                 SELECT u.telegram_id, s.product_id, s.end_date
                 FROM subscriptions s
                 JOIN users u ON s.user_id = u.id
                 WHERE s.status IN ('ACTIVE', 'CANCELED')
                   AND s.end_date > NOW()
             """)).fetchall()
-
             logger.info(f"Найдено активных подписок в gramkit: {len(rows)}")
+        except Exception as e:
+            logger.error(f"Ошибка чтения из gramkit: {e}", exc_info=True)
+            rows = []
+        finally:
+            gramkit_db.close()
 
+        # Шаг 2: обновляем в newsbot БД
+        db = SessionLocal()
+        try:
             plan_mapping = {
                 "FEELIT_START": "start",
                 "FEELIT_PRO": "pro",
@@ -424,8 +433,3 @@ class Scheduler:
         finally:
             db.close()
             logger.info("=== СИНХРОНИЗАЦИЯ ЗАВЕРШЕНА ===")
-
-    def stop(self):
-        logger.info("Остановка планировщика задач")
-        self.scheduler.shutdown()
-        logger.info("Планировщик остановлен")
