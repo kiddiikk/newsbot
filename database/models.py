@@ -40,6 +40,22 @@ class User(Base):
         primaryjoin="foreign(Channel.owner_id) == User.telegram_id",
     )
 
+    # Команда: связь как owner (кто пригласил)
+    team_as_owner = relationship(
+        "TeamMember",
+        foreign_keys="TeamMember.owner_id",
+        primaryjoin="foreign(TeamMember.owner_id) == User.telegram_id",
+        viewonly=True,
+    )
+
+    # Команда: связь как member (кого пригласили)
+    team_as_member = relationship(
+        "TeamMember",
+        foreign_keys="TeamMember.member_id",
+        primaryjoin="foreign(TeamMember.member_id) == User.telegram_id",
+        viewonly=True,
+    )
+
 
 class Channel(Base):
     __tablename__ = "channels"
