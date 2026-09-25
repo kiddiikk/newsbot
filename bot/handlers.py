@@ -119,7 +119,7 @@ async def start_command(message: Message, state: FSMContext, command: CommandObj
 
     await message.answer(
         welcome_text,
-        reply_markup=keyboards.main_menu(is_admin=is_admin),
+        reply_markup=keyboards.main_menu(is_admin=is_admin, is_team_owner=is_team_owner),
         parse_mode="HTML"
     )
 
@@ -245,14 +245,13 @@ async def process_channel_topic(message: Message, state: FSMContext):
     user = get_or_create_user(db, message.from_user.id, message.from_user.username)
 
     # 👇 Editor не может добавлять каналы
-from database.crud import get_owned_team
-if get_owned_team(db, user.telegram_id):
-    await message.answer("❌ Только владелец может добавлять каналы.")
-    db.close()
-    await state.clear()
-    return
-    
-        # 👇 ПРОВЕРКА ЛИМИТА КАНАЛОВ
+    if get_owned_team(db, user.telegram_id):
+        await message.answer("❌ Только владелец может добавлять каналы.")
+        db.close()
+        await state.clear()
+        return
+
+    # 👇 ПРОВЕРКА ЛИМИТА КАНАЛОВ
     can, msg = can_add_channel(db, user)
     if not can:
         await message.answer(msg)
@@ -445,6 +444,15 @@ async def delete_source_execute(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("add_rss_"))
 async def add_rss_manual_start(callback: CallbackQuery, state: FSMContext):
     channel_id = int(callback.data.split("_")[2])
+
+    # 👇 ПРОВЕРКА ПРАВА
+    db = SessionLocal()
+    if not check_permission(db, callback.from_user.id, "manage_rss"):
+        await callback.answer("❌ Нет права управлять RSS", show_alert=True)
+        db.close()
+        return
+    db.close()
+
     await state.update_data(channel_id=channel_id)
     await callback.message.edit_text(
         "📡 Введите URL RSS-ленты напрямую.\n\n"
@@ -759,6 +767,14 @@ async def set_schedule(callback: CallbackQuery):
         await callback.answer("Ошибка данных. Попробуйте снова.", show_alert=True)
         return
 
+    # 👇 ПРОВЕРКА ПРАВА
+    db = SessionLocal()
+    if not check_permission(db, callback.from_user.id, "change_interval"):
+        await callback.answer("❌ Нет права менять интервал", show_alert=True)
+        db.close()
+        return
+    db.close()
+
     db = SessionLocal()
     update_channel_settings(db, channel_id, post_interval=interval)
     db.close()
@@ -847,7 +863,7 @@ async def ai_prompt_change_start(callback: CallbackQuery, state: FSMContext):
         db.close()
         return
 
-# Проверка права
+    # 👇 Проверка права
     if not check_permission(db, callback.from_user.id, "change_prompt"):
         await callback.answer("❌ Нет права менять промпт", show_alert=True)
         db.close()
@@ -939,6 +955,12 @@ async def toggle_moderation(callback: CallbackQuery):
             "❌ Премодерация доступна только в тарифах «Про» и «Бизнес»",
             show_alert=True
         )
+        db.close()
+        return
+
+    # 👇 ПРОВЕРКА ПРАВА EDITOR'А
+    if not check_permission(db, callback.from_user.id, "moderate_posts"):
+        await callback.answer("❌ Нет права модерировать", show_alert=True)
         db.close()
         return
 
