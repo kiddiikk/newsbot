@@ -668,3 +668,90 @@ def get_channel_stats_week(db: Session, channel_id: int, days: int = 7) -> dict:
         "top_posts": sorted_by_reactions[:3],
         "best_post": sorted_by_reactions[0] if sorted_by_reactions else None,
     }
+
+ def get_channel_stats_comparison(db: Session, channel_id: int) -> dict:
+    """
+    Возвращает сравнение за последние 7 дней и предыдущие 7 дней:
+    - посты: было / стало
+    - реакции: было / стало
+    - подписчики: было / стало
+    """
+    from datetime import timezone, timedelta
+    from database.models import Post, PostMetric, ChannelStat
+
+    now = datetime.now(timezone.utc)
+    week_ago = now - timedelta(days=7)
+    two_weeks_ago = now - timedelta(days=14)
+
+    # === Текущая неделя (7 дней) ===
+    current_posts = db.query(Post).filter(
+        Post.channel_id == channel_id,
+        Post.published_time >= week_ago,
+        Post.status == "published",
+    ).count()
+
+    current_reactions_rows = db.query(PostMetric).join(
+        Post, Post.id == PostMetric.post_id
+    ).filter(
+        Post.channel_id == channel_id,
+        Post.published_time >= week_ago,
+    ).with_entities(PostMetric.reactions_total).all()
+    current_reactions = sum(r[0] for r in current_reactions_rows) if current_reactions_rows else 0
+
+    # === Прошлая неделя (7-14 дней назад) ===
+    prev_posts = db.query(Post).filter(
+        Post.channel_id == channel_id,
+        Post.published_time >= two_weeks_ago,
+        Post.published_time < week_ago,
+        Post.status == "published",
+    ).count()
+
+    prev_reactions_rows = db.query(PostMetric).join(
+        Post, Post.id == PostMetric.post_id
+    ).filter(
+        Post.channel_id == channel_id,
+        Post.published_time >= two_weeks_ago,
+        Post.published_time < week_ago,
+    ).with_entities(PostMetric.reactions_total).all()
+    prev_reactions = sum(r[0] for r in prev_reactions_rows) if prev_reactions_rows else 0
+
+    # === Подписчики ===
+    # Ищем ближайший снимок к неделе назад
+    stat_week_ago = db.query(ChannelStat).filter(
+        ChannelStat.channel_id == channel_id,
+        ChannelStat.date <= week_ago,
+    ).order_by(ChannelStat.date.desc()).first()
+
+    stat_now = db.query(ChannelStat).filter(
+        ChannelStat.channel_id == channel_id,
+    ).order_by(ChannelStat.date.desc()).first()
+
+    members_week_ago = stat_week_ago.member_count if stat_week_ago else 0
+    members_now = stat_now.member_count if stat_now else 0
+    members_growth = members_now - members_week_ago
+
+    # === Расчёт изменений ===
+    def pct_change(old, new):
+        if old == 0:
+            return None
+        return round((new - old) / old * 100, 1)
+
+    return {
+        "posts": {
+            "current": current_posts,
+            "prev": prev_posts,
+            "change": current_posts - prev_posts,
+            "pct": pct_change(prev_posts, current_posts),
+        },
+        "reactions": {
+            "current": current_reactions,
+            "prev": prev_reactions,
+            "change": current_reactions - prev_reactions,
+            "pct": pct_change(prev_reactions, current_reactions),
+        },
+        "members": {
+            "current": members_now,
+            "prev": members_week_ago,
+            "growth": members_growth,
+        },
+    }
