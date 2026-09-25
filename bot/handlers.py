@@ -1282,8 +1282,7 @@ async def check_trial_subscription(callback: CallbackQuery, bot: Bot):
 
 @router.callback_query(F.data == "team")
 async def team_menu(callback: CallbackQuery):
-    from database.crud import get_team_members, count_active_team
-    from config.settings import SUBSCRIPTION_PRICES
+    from database.crud import get_team_members, count_active_team, get_team_limit, can_buy_extra_seat
 
     user_id = callback.from_user.id
     db = SessionLocal()
@@ -1299,25 +1298,29 @@ async def team_menu(callback: CallbackQuery):
         db.close()
         return
 
-    # Лимит команды
-    max_team = SUBSCRIPTION_PRICES.get("business", {}).get("team_size", 5)
-    # TODO: учесть докупленные места
+    # Лимит команды (с учётом докупленных мест)
+    max_team = get_team_limit(db, user_id)
     team_size = count_active_team(db, user_id)
+    can_buy = can_buy_extra_seat(db, user_id)
     db.close()
 
     text = (
         f"👥 <b>Команда</b>\n\n"
-        f"Участников: <b>{team_size}/{max_team}</b>\n\n"
-        f"Пригласи редактора — он получит доступ к твоим каналам "
-        f"в рамках прав, которые ты задашь."
+        f"Участников: <b>{team_size}/{max_team}</b>\n"
     )
+    
+    if can_buy:
+        text += f"\n💎 Можно докупить места (до 10 суммарно, 200⭐ за место)."
+    else:
+        text += f"\n🔒 Достигнут максимум мест."
+    
+    text += f"\n\nПригласи редактора — он получит доступ к твоим каналам в рамках прав."
 
     await callback.message.edit_text(
         text,
-        reply_markup=keyboards.team_menu(user_id, team_size, max_team),
+        reply_markup=keyboards.team_menu(user_id, team_size, max_team, can_buy),
         parse_mode="HTML"
     )
-
 
 @router.callback_query(F.data == "team_invite")
 async def team_invite(callback: CallbackQuery):
@@ -1364,7 +1367,6 @@ async def team_invite(callback: CallbackQuery):
         parse_mode="HTML"
     )
 
-
 @router.callback_query(F.data == "team_list")
 async def team_list(callback: CallbackQuery):
     from database.crud import get_team_members
@@ -1383,7 +1385,6 @@ async def team_list(callback: CallbackQuery):
         reply_markup=keyboards.team_members_menu(members),
         parse_mode="HTML"
     )
-
 
 @router.callback_query(F.data.startswith("team_member_"))
 async def team_member_menu(callback: CallbackQuery):
@@ -1418,7 +1419,6 @@ async def team_member_menu(callback: CallbackQuery):
         parse_mode="HTML"
     )
 
-
 @router.callback_query(F.data.startswith("team_perms_"))
 async def team_perms_menu(callback: CallbackQuery):
     team_id = int(callback.data.split("_")[2])
@@ -1441,7 +1441,6 @@ async def team_perms_menu(callback: CallbackQuery):
         reply_markup=keyboards.team_permissions_menu(team_id, member.permissions or {}),
         parse_mode="HTML"
     )
-
 
 @router.callback_query(F.data.startswith("team_perm_"))
 async def team_perm_toggle(callback: CallbackQuery):
@@ -1494,7 +1493,6 @@ async def team_remove_confirm(callback: CallbackQuery):
         parse_mode="HTML"
     )
 
-
 @router.callback_query(F.data.startswith("team_remove_confirm_"))
 async def team_remove_execute(callback: CallbackQuery):
     team_id = int(callback.data.split("_")[3])
@@ -1519,3 +1517,33 @@ async def team_remove_execute(callback: CallbackQuery):
     await callback.answer("Участник удалён")
     callback.data = "team_list"
     await team_list(callback)
+
+@router.callback_query(F.data == "team_buy_seat")
+async def team_buy_seat(callback: CallbackQuery):
+    """Докупка места — отправляем invoice на 200⭐."""
+    from database.crud import get_team_limit, can_buy_extra_seat
+
+    user_id = callback.from_user.id
+
+    db = SessionLocal()
+    max_team = get_team_limit(db, user_id)
+    can_buy = can_buy_extra_seat(db, user_id)
+    db.close()
+
+    if not can_buy:
+        await callback.answer(
+            "❌ Достигнут максимум (10 мест).",
+            show_alert=True
+        )
+        return
+
+    # Отправляем invoice на 200⭐
+    await callback.bot.send_invoice(
+        chat_id=user_id,
+        title="Доп. место в команду",
+        description=f"Одно дополнительное место для редактора. Сейчас: {max_team}/10.",
+        payload="extra_seat",
+        currency="XTR",
+        prices=[LabeledPrice(label="Доп. место", amount=200)],
+        provider_token=""
+    )
