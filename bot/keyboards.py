@@ -174,18 +174,28 @@ class Keyboards:
     # ============================================================
 
     @staticmethod
-    def team_menu(owner_id: int, team_size: int, max_team: int):
-        """Главный экран команды: пригласить + список."""
+    def team_menu(owner_id: int, team_size: int, max_team: int, can_buy_more: bool = False):
+        """Главный экран команды: пригласить + список + докупить."""
         keyboard = [
             [InlineKeyboardButton(
                 text=f"➕ Пригласить ({team_size}/{max_team})",
                 callback_data="team_invite"
             )],
             [InlineKeyboardButton(text="👥 Участники", callback_data="team_list")],
-            [InlineKeyboardButton(text="◀️ Назад", callback_data="back_main")],
         ]
+        
+        # 👇 Кнопка «Докупить место» — если ещё можно
+        if can_buy_more:
+            keyboard.append([
+                InlineKeyboardButton(
+                    text="💎 Докупить место (200⭐)",
+                    callback_data="team_buy_seat"
+                )
+            ])
+        
+        keyboard.append([InlineKeyboardButton(text="◀️ Назад", callback_data="back_main")])
         return InlineKeyboardMarkup(inline_keyboard=keyboard)
-
+        
     @staticmethod
     def team_members_menu(members: List[TeamMember]):
         """Список участников."""
