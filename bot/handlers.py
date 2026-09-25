@@ -835,6 +835,23 @@ async def set_ai_model(callback: CallbackQuery):
     model = "-".join(parts[3:])
 
     db = SessionLocal()
+    channel = db.query(Channel).filter_by(id=channel_id).first()
+
+    if not channel:
+        await callback.answer("Канал не найден!", show_alert=True)
+        db.close()
+        return
+
+    # 👇 ПРОВЕРКА ТАРИФА
+    owner = channel.owner
+    if not can_use_model(owner, model):
+        await callback.answer(
+            f"❌ Модель {model} недоступна на вашем тарифе. Обновите тариф в Mini App.",
+            show_alert=True
+        )
+        db.close()
+        return
+
     update_channel_settings(db, channel_id, ai_model=model)
     db.close()
 
