@@ -32,6 +32,7 @@ class User(Base):
     subscription_until = Column(DateTime(timezone=True), nullable=True)
     trial_used = Column(Boolean, default=False)
     subscription_plan = Column(String, nullable=True)
+    extra_seats = Column(Integer, default=0, server_default='0')
     user_type = Column(String, nullable=False, default='REGISTERED', server_default='REGISTERED')
 
     channels = relationship(
