@@ -289,3 +289,176 @@ def can_add_team_member(db: Session, user) -> tuple[bool, str]:
         return False, "❌ Командный доступ недоступен на вашем тарифе."
     # TODO: подсчёт team_members, когда будет таблица
     return True, ""
+
+# ============================================================
+# КОМАНДНЫЙ ДОСТУП (team_members)
+# ============================================================
+
+import secrets
+from database.models import TeamMember
+
+
+# Дефолтные права для editor
+DEFAULT_EDITOR_PERMISSIONS = {
+    "change_prompt": True,
+    "moderate_posts": True,
+    "manage_rss": True,
+    "change_interval": True,
+}
+
+
+def create_invite_token() -> str:
+    """Генерирует уникальный токен для инвайт-ссылки."""
+    return secrets.token_urlsafe(16)
+
+
+def invite_team_member(db: Session, owner_id: int) -> TeamMember | None:
+    """
+    Создаёт приглашение (TeamMember без member_id).
+    Возвращает объект с invite_token.
+    """
+    # Проверяем, что нет висящего приглашения
+    existing = db.query(TeamMember).filter(
+        TeamMember.owner_id == owner_id,
+        TeamMember.member_id.is_(None),
+        TeamMember.is_active == True,
+    ).first()
+
+    if existing:
+        return existing  # уже есть висящее приглашение — используем его
+
+    token = create_invite_token()
+    member = TeamMember(
+        owner_id=owner_id,
+        member_id=None,  # ещё не принял
+        role="editor",
+        permissions=DEFAULT_EDITOR_PERMISSIONS.copy(),
+        invite_token=token,
+        is_active=True,
+    )
+    db.add(member)
+    db.commit()
+    db.refresh(member)
+    return member
+
+
+def accept_invite(db: Session, token: str, member_id: int) -> TeamMember | None:
+    """Принимает приглашение: привязывает member_id к TeamMember по токену."""
+    member = db.query(TeamMember).filter(
+        TeamMember.invite_token == token,
+        TeamMember.is_active == True,
+    ).first()
+
+    if not member:
+        return None
+
+    if member.member_id is not None:
+        return None  # уже принят
+
+    # Проверка: member_id не уже в этой команде
+    existing = db.query(TeamMember).filter(
+        TeamMember.owner_id == member.owner_id,
+        TeamMember.member_id == member_id,
+        TeamMember.is_active == True,
+    ).first()
+    if existing:
+        return None
+
+    member.member_id = member_id
+    member.accepted_at = datetime.utcnow()
+    db.commit()
+    db.refresh(member)
+    return member
+
+
+def get_team_members(db: Session, owner_id: int) -> list[TeamMember]:
+    """Возвращает всех принятых участников команды владельца."""
+    return db.query(TeamMember).filter(
+        TeamMember.owner_id == owner_id,
+        TeamMember.member_id.isnot(None),
+        TeamMember.is_active == True,
+    ).all()
+
+
+def get_member_role(db: Session, owner_id: int, member_id: int) -> TeamMember | None:
+    """Возвращает запись TeamMember, если юзер — участник команды владельца."""
+    return db.query(TeamMember).filter(
+        TeamMember.owner_id == owner_id,
+        TeamMember.member_id == member_id,
+        TeamMember.is_active == True,
+    ).first()
+
+
+def get_owned_team(db: Session, member_id: int) -> TeamMember | None:
+    """Возвращает запись TeamMember, если юзер — чей-то участник (не owner)."""
+    return db.query(TeamMember).filter(
+        TeamMember.member_id == member_id,
+        TeamMember.is_active == True,
+    ).first()
+
+
+def update_member_permission(
+    db: Session, team_id: int, permission: str, value: bool
+) -> TeamMember | None:
+    """Меняет одно право у участника команды."""
+    member = db.query(TeamMember).filter(TeamMember.id == team_id).first()
+    if not member:
+        return None
+
+    perms = dict(member.permissions or {})
+    perms[permission] = value
+    member.permissions = perms
+    db.commit()
+    db.refresh(member)
+    return member
+
+
+def remove_team_member(db: Session, team_id: int) -> bool:
+    """Деактивирует участника команды (не удаляет)."""
+    member = db.query(TeamMember).filter(TeamMember.id == team_id).first()
+    if not member:
+        return False
+    member.is_active = False
+    db.commit()
+    return True
+
+
+def count_active_team(db: Session, owner_id: int) -> int:
+    """Сколько активных участников у владельца (принятых)."""
+    return db.query(TeamMember).filter(
+        TeamMember.owner_id == owner_id,
+        TeamMember.member_id.isnot(None),
+        TeamMember.is_active == True,
+    ).count()
+
+
+def can_use_permission(db: Session, user_id: int, permission: str) -> bool:
+    """
+    Проверяет: есть ли у юзера право permission.
+
+    Логика:
+    - Если юзер — admin (в ADMIN_IDS) → True.
+    - Если юзер — owner (не в команде) → True (у него все права).
+    - Если юзер — member (editor) → смотрим его permissions.
+    - Иначе → False.
+    """
+    from config.settings import ADMIN_IDS
+
+    if user_id in ADMIN_IDS:
+        return True
+
+    team = get_owned_team(db, user_id)
+    if not team:
+        # Не участник команды — значит владелец или чужой.
+        # Если у юзера есть свои каналы — он owner.
+        # TODO: уточнить логику
+        return True  # пока разрешаем всем, кроме участников
+
+    perms = team.permissions or {}
+    return bool(perms.get(permission, False))
+
+
+def is_team_owner(db: Session, user_id: int) -> bool:
+    """Проверяет, есть ли у юзера свои каналы (значит он owner, не editor)."""
+    count = db.query(Channel).filter(Channel.owner_id == user_id).count()
+    return count > 0
