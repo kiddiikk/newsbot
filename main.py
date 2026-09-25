@@ -98,7 +98,16 @@ async def main():
     try:
         logger.info("✅ Бот запущен и готов к работе")
         await bot.delete_webhook(drop_pending_updates=True)
-        await dp.start_polling(bot)
+        await dp.start_polling(
+            bot,
+            allowed_updates=[
+                "message",
+                "callback_query",
+                "pre_checkout_query",
+                "message_reaction",
+                "message_reaction_count",
+            ]
+        )
     finally:
         scheduler.stop()
         await bot.session.close()
