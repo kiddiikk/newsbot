@@ -58,19 +58,27 @@ class AIProcessor:
         }
         logger.info(f"AIProcessor инициализирован. Модель по умолчанию: {self.SAFE_MODEL}")
 
-    async def process_content(self, entry: Dict, ch_settings: Dict) -> str:
+async def process_content(self, entry: Dict, channel) -> str:
+    """
+    Обрабатывает контент для конкретного канала.
 
-        try:
-            model = ch_settings.get("ai_model") or self.SAFE_MODEL
-            if model not in self.SUPPORTED_MODELS:
-                logger.warning(
-                    f"Модель {model} не поддерживается. Доступные модели: {', '.join(self.SUPPORTED_MODELS)}")
-                logger.info(f"Используем модель по умолчанию: {self.SAFE_MODEL}")
-                model = self.SAFE_MODEL
+    channel — объект Channel из БД (нужен owner_id, ai_model, ai_prompt, topic).
+    """
+    try:
+        model = channel.ai_model or self.SAFE_MODEL
+        if model not in self.SUPPORTED_MODELS:
+            logger.warning(
+                f"Модель {model} не поддерживается. Доступные модели: {', '.join(self.SUPPORTED_MODELS)}")
+            logger.info(f"Используем модель по умолчанию: {self.SAFE_MODEL}")
+            model = self.SAFE_MODEL
 
-            topic = ch_settings.get("topic", "новости")
-            sys_prompt = (ch_settings.get("ai_prompt") or self._default_prompt().format(topic=topic))
+        topic = channel.topic or "новости"
 
+        # Собираем промпт: owner → OWNER_PROMPT, юзер → BASE_PROMPT + дизайнерский
+        sys_prompt = build_final_prompt(channel, ADMIN_IDS)
+
+        # Определяем — канал владельца?
+        is_owner = is_owner_channel(channel, ADMIN_IDS)
 
             clean_content = clean_rss_content(entry['content'])
             user_prompt = f"ПЕРЕВЕДИ ЭТУ НОВОСТЬ НА РУССКИЙ ЯЗЫК И переработай в пост для Telegram (700-900 символов): Title: {entry['title']}. Content: {clean_content[:700]}"
