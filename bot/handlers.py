@@ -864,13 +864,29 @@ async def toggle_moderation(callback: CallbackQuery):
     channel_id = int(callback.data.split("_")[1])
     db = SessionLocal()
     channel = db.query(Channel).filter_by(id=channel_id).first()
-    if channel:
-        new_mode = not channel.moderation_mode
-        update_channel_settings(db, channel_id, moderation_mode=new_mode)
-        mode_text = "включен" if new_mode else "выключен"
-        await callback.answer(f"Режим модерации {mode_text}")
-        await ai_settings_menu(callback)
+
+    if not channel:
+        await callback.answer("Канал не найден!", show_alert=True)
+        db.close()
+        return
+
+    # 👇 ПРОВЕРКА ТАРИФА
+    owner = channel.owner
+    if not can_use_feature(owner, "moderation"):
+        await callback.answer(
+            "❌ Премодерация доступна только в тарифах «Про» и «Бизнес»",
+            show_alert=True
+        )
+        db.close()
+        return
+
+    new_mode = not channel.moderation_mode
+    update_channel_settings(db, channel_id, moderation_mode=new_mode)
     db.close()
+
+    mode_text = "включён" if new_mode else "выключен"
+    await callback.answer(f"Режим модерации {mode_text}")
+    await ai_settings_menu(callback)
 
 
 # ============================================================
