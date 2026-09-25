@@ -72,6 +72,16 @@ class Scheduler:
         )
         logger.info("Задача sync_subscriptions_from_gramkit добавлена в планировщик")
 
+        # 👇 НОВОЕ: очистка истёкших подписок каждый час
+        self.scheduler.add_job(
+            self.cleanup_expired_subscriptions,
+            IntervalTrigger(seconds=3600),
+            id='cleanup_expired',
+            replace_existing=True,
+            max_instances=1
+        )
+        logger.info("Задача cleanup_expired_subscriptions добавлена в планировщик")
+
         self.scheduler.start()
         logger.info("Планировщик запущен")
 
