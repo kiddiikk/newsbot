@@ -541,7 +541,11 @@ class Scheduler:
                         if stats["posts_count"] == 0:
                             continue
 
-                        text = self._format_weekly_report(channel, stats)
+                        # 👇 Сравнение с прошлой неделей
+                        from database.crud import get_channel_stats_comparison
+                        comparison = get_channel_stats_comparison(db, channel.id)
+
+                        text = self._format_weekly_report(channel, stats, comparison)
                         await self.bot.send_message(
                             user.telegram_id,
                             text,
