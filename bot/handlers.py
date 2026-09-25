@@ -147,7 +147,8 @@ async def back_to_main_menu(callback: CallbackQuery, state: FSMContext):
 async def show_channels(event: Message | CallbackQuery):
     db = SessionLocal()
     user = get_or_create_user(db, event.from_user.id, event.from_user.username)
-    channels = get_user_channels(db, user.telegram_id)  # ✅ ФИКС: user.id → user.telegram_id
+    owner_id = get_effective_owner_id(db, user.telegram_id)
+    channels = get_user_channels(db, owner_id)
     db.close()
 
     text = "У вас пока нет каналов. Хотите добавить первый?" if not channels else "📊 Ваши каналы:"
@@ -242,6 +243,14 @@ async def process_channel_topic(message: Message, state: FSMContext):
     data = await state.get_data()
     db = SessionLocal()
     user = get_or_create_user(db, message.from_user.id, message.from_user.username)
+
+    # 👇 Editor не может добавлять каналы
+from database.crud import get_owned_team
+if get_owned_team(db, user.telegram_id):
+    await message.answer("❌ Только владелец может добавлять каналы.")
+    db.close()
+    await state.clear()
+    return
     
         # 👇 ПРОВЕРКА ЛИМИТА КАНАЛОВ
     can, msg = can_add_channel(db, user)
@@ -838,13 +847,9 @@ async def ai_prompt_change_start(callback: CallbackQuery, state: FSMContext):
         db.close()
         return
 
-    # 👇 ПРОВЕРКА ТАРИФА
-    owner = channel.owner
-    if not can_use_feature(owner, "custom_prompt"):
-        await callback.answer(
-            "❌ Свой промпт доступен только в тарифах «Про» и «Бизнес»",
-            show_alert=True
-        )
+# Проверка права
+    if not check_permission(db, callback.from_user.id, "change_prompt"):
+        await callback.answer("❌ Нет права менять промпт", show_alert=True)
         db.close()
         return
 
