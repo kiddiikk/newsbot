@@ -493,3 +493,61 @@ def check_permission(db: Session, user_id: int, permission: str) -> bool:
     
     perms = team.permissions or {}
     return bool(perms.get(permission, False))
+# ============================================================
+# ДОКУПКА МЕСТ (extra_seats)
+# ============================================================
+
+def get_team_limit(db: Session, owner_id: int) -> int:
+    """
+    Возвращает лимит команды для владельца:
+    base (по тарифу) + extra_seats, максимум 10.
+    """
+    from config.settings import SUBSCRIPTION_PRICES, ADMIN_IDS
+
+    if owner_id in ADMIN_IDS:
+        return 999  # админ — безлимит
+
+    user = db.query(User).filter(User.telegram_id == owner_id).first()
+    if not user:
+        return 0
+
+    plan = user.subscription_plan or "start"
+    plan_data = SUBSCRIPTION_PRICES.get(plan, SUBSCRIPTION_PRICES["start"])
+    base = plan_data.get("team_size", 0)
+    extra = user.extra_seats or 0
+
+    return min(base + extra, 10)  # максимум 10
+
+
+def can_buy_extra_seat(db: Session, owner_id: int) -> bool:
+    """Можно ли ещё докупить место (лимит 10)."""
+    current = get_team_limit(db, owner_id)
+    return current < 10
+
+
+def add_extra_seat(db: Session, owner_id: int) -> int:
+    """
+    Увеличивает extra_seats на 1 (до лимита 10).
+    Возвращает новое значение extra_seats, или 0 если максимум.
+    """
+    user = db.query(User).filter(User.telegram_id == owner_id).first()
+    if not user:
+        return 0
+
+    current_total = get_team_limit(db, owner_id)
+    if current_total >= 10:
+        return 0  # максимум достигнут
+
+    user.extra_seats = (user.extra_seats or 0) + 1
+    db.commit()
+    db.refresh(user)
+    return user.extra_seats
+
+
+def reset_extra_seats(db: Session, owner_id: int) -> int:
+    """Сбрасывает extra_seats (при истечении Бизнес-подписки)."""
+    user = db.query(User).filter(User.telegram_id == owner_id).first()
+    if user:
+        user.extra_seats = 0
+        db.commit()
+    return 0
