@@ -718,6 +718,51 @@ class Scheduler:
             db.close()
             logger.info("=== СНИМОК ЗАВЕРШЁН ===")
 
+    async def generate_ai_insights(self, db, channel, stats: dict) -> str | None:
+        """
+        Генерирует AI-инсайты для канала на основе статистики.
+        Возвращает строку с рекомендациями или None.
+        """
+        from core.ai_processor import AIProcessor
+        
+        try:
+            # Собираем данные для промпта
+            top_posts = stats.get("top_posts", [])
+            
+            # Формируем текстовый контекст
+            posts_text = "\n".join([
+                f"- {p['title'][:80]} | реакций: {p['reactions_total']}"
+                for p in top_posts
+            ]) if top_posts else "нет данных"
+            
+            prompt = (
+                f"Ты — аналитик Telegram-канала. Вот статистика за неделю:\n\n"
+                f"Канал: {channel.channel_name}\n"
+                f"Тема: {channel.topic or 'не указана'}\n"
+                f"Постов за неделю: {stats['posts_count']}\n"
+                f"Средние реакции: {stats['avg_reactions']}\n"
+                f"Всего реакций: {stats.get('total_reactions', 0)}\n\n"
+                f"Топ-посты:\n{posts_text}\n\n"
+                f"ЗАДАЧА: дай 3-4 конкретные рекомендации, что улучшить в канале. "
+                f"Только практические советы. Каждая рекомендация — 1-2 предложения. "
+                f"Без воды, без вступлений. Формат — просто список с • в начале строки."
+            )
+            
+            ai = AIProcessor()
+            response = await ai._call_groq(
+                "openai/gpt-oss-20b",
+                "Ты — опытный аналитик Telegram-каналов. Даёшь конкретные рекомендации, без воды.",
+                prompt,
+            )
+            
+            if response and len(response.strip()) > 50:
+                return response.strip()
+            return None
+            
+        except Exception as e:
+            logger.error(f"Ошибка AI-инсайтов: {e}", exc_info=True)
+            return None
+    
     def stop(self):
         logger.info("Остановка планировщика задач")
         self.scheduler.shutdown()
