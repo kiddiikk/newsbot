@@ -6,8 +6,9 @@ from typing import Dict, List, Optional, Tuple
 from datetime import datetime
 from urllib.parse import urlparse
 from groq import Groq, GroqError
-from config.settings import GROQ_API_KEY, DEFAULT_AI_MODEL, GROQ_MODELS
+from config.settings import GROQ_API_KEY, DEFAULT_AI_MODEL, GROQ_MODELS, ADMIN_IDS
 from utils.helpers import sanitize_html, clean_rss_content
+from config.prompts import build_final_prompt, is_owner_channel
 
 logger = logging.getLogger(__name__)
 
