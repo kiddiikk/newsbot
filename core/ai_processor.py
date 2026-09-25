@@ -58,27 +58,27 @@ class AIProcessor:
         }
         logger.info(f"AIProcessor инициализирован. Модель по умолчанию: {self.SAFE_MODEL}")
 
-async def process_content(self, entry: Dict, channel) -> str:
-    """
-    Обрабатывает контент для конкретного канала.
+    async def process_content(self, entry: Dict, channel) -> str:
+        """
+        Обрабатывает контент для конкретного канала.
 
-    channel — объект Channel из БД (нужен owner_id, ai_model, ai_prompt, topic).
-    """
-    try:
-        model = channel.ai_model or self.SAFE_MODEL
-        if model not in self.SUPPORTED_MODELS:
-            logger.warning(
-                f"Модель {model} не поддерживается. Доступные модели: {', '.join(self.SUPPORTED_MODELS)}")
-            logger.info(f"Используем модель по умолчанию: {self.SAFE_MODEL}")
-            model = self.SAFE_MODEL
+        channel — объект Channel из БД (owner_id, ai_model, ai_prompt, topic).
+        """
+        try:
+            model = channel.ai_model or self.SAFE_MODEL
+            if model not in self.SUPPORTED_MODELS:
+                logger.warning(
+                    f"Модель {model} не поддерживается. Доступные модели: {', '.join(self.SUPPORTED_MODELS)}")
+                logger.info(f"Используем модель по умолчанию: {self.SAFE_MODEL}")
+                model = self.SAFE_MODEL
 
-        topic = channel.topic or "новости"
+            topic = channel.topic or "новости"
 
-        # Собираем промпт: owner → OWNER_PROMPT, юзер → BASE_PROMPT + дизайнерский
-        sys_prompt = build_final_prompt(channel, ADMIN_IDS)
+            # Собираем промпт: owner → OWNER_PROMPT, юзер → BASE_PROMPT + дизайнерский
+            sys_prompt = build_final_prompt(channel, ADMIN_IDS)
 
-        # Определяем — канал владельца?
-        is_owner = is_owner_channel(channel, ADMIN_IDS)
+            # Определяем — канал владельца?
+            is_owner = is_owner_channel(channel, ADMIN_IDS)
 
             clean_content = clean_rss_content(entry['content'])
             user_prompt = f"ПЕРЕВЕДИ ЭТУ НОВОСТЬ НА РУССКИЙ ЯЗЫК И переработай в пост для Telegram (700-900 символов): Title: {entry['title']}. Content: {clean_content[:700]}"
@@ -89,12 +89,9 @@ async def process_content(self, entry: Dict, channel) -> str:
 
             raw_response = await self._call_groq(model, sys_prompt, user_prompt)
 
-
             if not raw_response or len(raw_response.strip()) < 100:
-                logger.warning(
-                    f"Получен короткий ответ от Groq ({len(raw_response.strip())} символов), используем улучшенный fallback")
+                logger.warning(...)
                 return await self._enhanced_fallback_format(entry, topic)
-
 
             if any(prompt_word in raw_response.lower() for prompt_word in
                    ["system:", "user:", "assistant:", "instruct", "you are", "твоя задача", "правила:", "пример:",
@@ -102,11 +99,10 @@ async def process_content(self, entry: Dict, channel) -> str:
                 logger.warning("В ответе обнаружены признаки промпта, используем улучшенный fallback")
                 return await self._enhanced_fallback_format(entry, topic)
 
-
             final_post = self._guaranteed_formatting(raw_response, topic, is_owner=is_owner)
             logger.info(f"Успешно обработан контент для поста. Длина: {len(final_post)} символов")
             logger.debug(f"Финальный пост: {final_post}")
-            return final_post[:1500]  # Увеличенное ограничение длины
+            return final_post[:1500]
 
         except Exception as e:
             logger.error(f"Ошибка при обработке контента: {str(e)}", exc_info=True)
