@@ -1027,6 +1027,30 @@ async def pre_checkout(pre_checkout_query: PreCheckoutQuery):
 async def successful_payment(message: Message):
     payload = message.successful_payment.invoice_payload
 
+    # 👇 ОБРАБОТКА ДОКУПКИ МЕСТА
+    if payload == "extra_seat":
+        db = SessionLocal()
+        user = get_or_create_user(db, message.from_user.id)
+        from database.crud import add_extra_seat, get_team_limit
+
+        new_extra = add_extra_seat(db, message.from_user.id)
+
+        if new_extra == 0:
+            db.close()
+            await message.answer("❌ Не удалось добавить место (максимум 10 достигнут).")
+            return
+
+        max_team = get_team_limit(db, message.from_user.id)
+        db.close()
+
+        await message.answer(
+            f"✅ <b>Место добавлено!</b>\n\n"
+            f"Теперь у тебя доступно: <b>{max_team} участников</b> команды.\n"
+            f"Пригласи редактора: /start → 👥 Команда.",
+            parse_mode="HTML"
+        )
+        return
+
     if payload.startswith("sub_"):
         plan_key = payload.split("_")[1]
         days = 30
