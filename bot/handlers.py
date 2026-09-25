@@ -1,12 +1,12 @@
 from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, LabeledPrice, PreCheckoutQuery
-from aiogram.filters import Command, StateFilter
+from aiogram.filters import Command, CommandObject, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from bot.keyboards import Keyboards
 from database.crud import *
 from database import crud
-from database.models import SessionLocal, Channel, RSSSource, Post
+from database.models import SessionLocal, Channel, RSSSource, Post, TeamMember, User
 from core.publisher import Publisher
 from core.ai_processor import AIProcessor
 from config.settings import ADMIN_IDS
@@ -36,7 +36,7 @@ class ChannelStates(StatesGroup):
 
 
 @router.message(Command("start"))
-async def start_command(message: Message, state: FSMContext):
+async def start_command(message: Message, state: FSMContext, command: CommandObject = None):
     await state.clear()
     db = SessionLocal()
     user = get_or_create_user(db, message.from_user.id, message.from_user.username)
@@ -44,6 +44,53 @@ async def start_command(message: Message, state: FSMContext):
     if message.from_user.id in ADMIN_IDS and not user.is_admin:
         user.is_admin = True
         db.commit()
+
+    # 👇 ПРОВЕРКА ИНВАЙТ-ТОКЕНА
+    args = command.args if command else None
+    if args and args.startswith("team_"):
+        token = args[5:]  # "team_abc123" → "abc123"
+
+        # Ищем приглашение
+        invite = db.query(TeamMember).filter(
+            TeamMember.invite_token == token,
+            TeamMember.is_active == True,
+        ).first()
+
+        if not invite:
+            await message.answer("❌ Приглашение не найдено или устарело.")
+            db.close()
+            return
+
+        if invite.member_id is not None:
+            await message.answer("❌ Приглашение уже использовано.")
+            db.close()
+            return
+
+        if invite.owner_id == message.from_user.id:
+            await message.answer("❌ Это ваше собственное приглашение.")
+            db.close()
+            return
+
+        # Принимаем инвайт
+        accepted = accept_invite(db, token, message.from_user.id)
+        if not accepted:
+            await message.answer("❌ Не удалось принять приглашение. Попробуйте позже.")
+            db.close()
+            return
+
+        # Узнаём владельца
+        owner = db.query(User).filter(User.telegram_id == invite.owner_id).first()
+        owner_username = f"@{owner.username}" if owner and owner.username else f"id{invite.owner_id}"
+
+        await message.answer(
+            f"✅ <b>Ты в команде {owner_username}!</b>\n\n"
+            f"Твоя роль: <b>Редактор</b>\n\n"
+            f"Тебе доступны каналы владельца. Управление правами — у владельца.\n\n"
+            f"Нажми /start чтобы открыть меню.",
+            parse_mode="HTML"
+        )
+        db.close()
+        return
 
     db.close()
 
