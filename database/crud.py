@@ -551,3 +551,120 @@ def reset_extra_seats(db: Session, owner_id: int) -> int:
         user.extra_seats = 0
         db.commit()
     return 0
+
+# ============================================================
+# АНАЛИТИКА (post_metrics)
+# ============================================================
+
+def get_or_create_metric(db: Session, post_id: int, channel_id: int):
+    """Возвращает метрику для поста или создаёт новую."""
+    from database.models import PostMetric
+
+    metric = db.query(PostMetric).filter(PostMetric.post_id == post_id).first()
+    if not metric:
+        metric = PostMetric(
+            post_id=post_id,
+            channel_id=channel_id,
+            reactions={},
+            reactions_total=0,
+            forwards=0,
+        )
+        db.add(metric)
+        db.commit()
+        db.refresh(metric)
+    return metric
+
+
+def update_reactions(db: Session, post_id: int, channel_id: int, reactions: dict) -> int:
+    """
+    Обновляет реакции для поста.
+    reactions — {"👍": 5, "🔥": 2, ...}
+    Возвращает общий счётчик.
+    """
+    from database.models import PostMetric
+
+    metric = get_or_create_metric(db, post_id, channel_id)
+    metric.reactions = reactions
+    metric.reactions_total = sum(reactions.values()) if reactions else 0
+    metric.updated_at = datetime.utcnow()
+    db.commit()
+    return metric.reactions_total
+
+
+def update_forwards(db: Session, post_id: int, channel_id: int, forwards: int) -> int:
+    """Обновляет число форвардов."""
+    from database.models import PostMetric
+
+    metric = get_or_create_metric(db, post_id, channel_id)
+    metric.forwards = forwards
+    metric.updated_at = datetime.utcnow()
+    db.commit()
+    return forwards
+
+
+def get_channel_metrics_week(db: Session, channel_id: int, days: int = 7) -> list:
+    """
+    Возвращает метрики для канала за последние N дней.
+    """
+    from database.models import PostMetric, Post
+    from datetime import timedelta
+
+    since = datetime.utcnow() - timedelta(days=days)
+
+    # Берём посты за период + их метрики
+    posts = db.query(Post).filter(
+        Post.channel_id == channel_id,
+        Post.published_time >= since,
+        Post.status == "published",
+    ).all()
+
+    result = []
+    for post in posts:
+        metric = db.query(PostMetric).filter(PostMetric.post_id == post.id).first()
+        result.append({
+            "post_id": post.id,
+            "title": post.original_title,
+            "published_time": post.published_time,
+            "reactions_total": metric.reactions_total if metric else 0,
+            "reactions": metric.reactions if metric else {},
+            "forwards": metric.forwards if metric else 0,
+        })
+    return result
+
+
+def get_channel_stats_week(db: Session, channel_id: int, days: int = 7) -> dict:
+    """
+    Возвращает сводку за неделю:
+    - сколько постов
+    - средние реакции
+    - топ-3 поста
+    - лучший пост недели
+    """
+    metrics = get_channel_metrics_week(db, channel_id, days=days)
+
+    if not metrics:
+        return {
+            "posts_count": 0,
+            "avg_reactions": 0,
+            "avg_forwards": 0,
+            "top_posts": [],
+            "best_post": None,
+        }
+
+    total_reactions = sum(m["reactions_total"] for m in metrics)
+    total_forwards = sum(m["forwards"] for m in metrics)
+    count = len(metrics)
+
+    sorted_by_reactions = sorted(
+        metrics, key=lambda m: m["reactions_total"], reverse=True
+    )
+
+    return {
+        "posts_count": count,
+        "avg_reactions": round(total_reactions / count, 1) if count else 0,
+        "avg_forwards": round(total_forwards / count, 1) if count else 0,
+        "total_reactions": total_reactions,
+        "total_forwards": total_forwards,
+        "top_posts": sorted_by_reactions[:3],
+        "best_post": sorted_by_reactions[0] if sorted_by_reactions else None,
+    }
