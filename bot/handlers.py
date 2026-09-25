@@ -180,6 +180,19 @@ async def process_channel_topic(message: Message, state: FSMContext):
     data = await state.get_data()
     db = SessionLocal()
     user = get_or_create_user(db, message.from_user.id, message.from_user.username)
+    
+        # 👇 ПРОВЕРКА ЛИМИТА КАНАЛОВ
+    can, msg = can_add_channel(db, user)
+    if not can:
+        await message.answer(msg)
+        db.close()
+        await state.clear()
+        return
+
+    channel = create_channel(
+        db, user.telegram_id, data['channel_id'],
+        data['channel_name'], message.text
+    )
 
     channel = create_channel(
         db, user.telegram_id, data['channel_id'],  # ✅ ФИКС: user.id → user.telegram_id
