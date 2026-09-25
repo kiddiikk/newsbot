@@ -570,6 +570,53 @@ class Scheduler:
             f"📈 Средние реакции: <b>{stats['avg_reactions']}</b>",
             f"",
         ]
+        
+        # Тренд — если есть сравнение
+        if comparison:
+            posts = comparison["posts"]
+            reactions = comparison["reactions"]
+            members = comparison["members"]
+
+            # Посты
+            posts_change = posts["change"]
+            posts_arrow = "📈" if posts_change > 0 else ("📉" if posts_change < 0 else "➡️")
+            lines.append(
+                f"📝 Постов: <b>{posts['current']}</b> "
+                f"{posts_arrow} ({'+' if posts_change >= 0 else ''}{posts_change})"
+            )
+
+            # Реакции
+            react_change = reactions["change"]
+            react_arrow = "📈" if react_change > 0 else ("📉" if react_change < 0 else "➡️")
+            lines.append(
+                f"👍 Реакций: <b>{reactions['current']}</b> "
+                f"{react_arrow} ({'+' if react_change >= 0 else ''}{react_change})"
+            )
+
+            # Средние реакции
+            lines.append(
+                f"📊 Средние реакции: <b>{stats['avg_reactions']}</b>"
+            )
+
+            # Подписчики
+            growth = members["growth"]
+            growth_arrow = "📈" if growth > 0 else ("📉" if growth < 0 else "➡️")
+            if growth != 0:
+                lines.append(
+                    f"👥 Подписчиков: <b>{members['current']}</b> "
+                    f"{growth_arrow} ({'+' if growth >= 0 else ''}{growth})"
+                )
+            else:
+                lines.append(f"👥 Подписчиков: <b>{members['current']}</b>")
+        else:
+            # Без сравнения — старое поведение
+            lines.extend([
+                f"📝 Постов: <b>{stats['posts_count']}</b>",
+                f"👍 Реакций всего: <b>{stats.get('total_reactions', 0)}</b>",
+                f"📈 Средние реакции: <b>{stats['avg_reactions']}</b>",
+            ])
+
+        lines.append("")
 
         if stats["top_posts"]:
             lines.append("🏆 <b>Топ-3 поста:</b>")
