@@ -31,6 +31,53 @@ class Scheduler:
             ]
         ]
         return InlineKeyboardMarkup(inline_keyboard=keyboard)
+        
+    async def cleanup_expired_subscriptions(self):
+        """
+        Раз в час: сбрасывает plan/subscription_until/extra_seats 
+        у юзеров с истёкшей подпиской.
+        """
+        from datetime import timezone
+        
+        logger.info("=== ОЧИСТКА ИСТЁКШИХ ПОДПИСОК ===")
+        db = SessionLocal()
+        try:
+            now = datetime.now(timezone.utc)
+
+            expired = db.query(User).filter(
+                User.subscription_until.isnot(None),
+                User.subscription_until < now,
+            ).all()
+
+            logger.info(f"Найдено истёкших: {len(expired)}")
+
+            count = 0
+            for u in expired:
+                old_plan = u.subscription_plan
+                old_extra = u.extra_seats
+                
+                u.subscription_plan = None
+                u.subscription_until = None
+                u.extra_seats = 0
+                
+                count += 1
+                logger.info(
+                    f"Очищен tg={u.telegram_id}: "
+                    f"plan {old_plan}→None, extra {old_extra}→0"
+                )
+
+            if count > 0:
+                db.commit()
+                logger.info(f"✅ Очищено: {count}")
+            else:
+                logger.info("Нет истёкших подписок")
+
+        except Exception as e:
+            logger.error(f"Ошибка очистки: {e}", exc_info=True)
+            db.rollback()
+        finally:
+            db.close()
+            logger.info("=== ОЧИСТКА ЗАВЕРШЕНА ===")
 
     def start(self):
         logger.info("Запуск планировщика задач")
