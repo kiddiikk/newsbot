@@ -268,7 +268,7 @@ async def process_content(self, entry: Dict, channel) -> str:
                 f"#новости #аварийныйрежим"
             )
 
-    def _guaranteed_formatting(self, raw_text: str, topic: str) -> str:
+    def _guaranteed_formatting(self, raw_text: str, topic: str, is_owner: bool = False) -> str:
 
         try:
             text = raw_text.strip()
