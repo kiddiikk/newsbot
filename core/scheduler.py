@@ -563,7 +563,7 @@ class Scheduler:
             db.close()
             logger.info("=== НЕДЕЛЬНЫЙ ОТЧЁТ ЗАВЕРШЁН ===")
 
-    def _format_weekly_report(self, channel, stats: dict) -> str:
+    def _format_weekly_report(self, channel, stats: dict, comparison: dict = None, insights: str = None) -> str:
         """Форматирует отчёт для отправки."""
         lines = [
             f"📊 <b>Отчёт за неделю</b>",
