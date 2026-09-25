@@ -135,3 +135,21 @@ class TeamMember(Base):
     invited_at = Column(DateTime, default=datetime.utcnow)
     accepted_at = Column(DateTime, nullable=True)
     is_active = Column(Boolean, default=True)
+
+class PostMetric(Base):
+    __tablename__ = "post_metrics"
+    __table_args__ = {'extend_existing': True}
+
+    id = Column(Integer, primary_key=True)
+    post_id = Column(Integer, ForeignKey("posts.id"), index=True)
+    channel_id = Column(Integer, index=True)
+    
+    # Реакции (JSON: {"👍": 5, "❤️": 3, "🔥": 10})
+    reactions = Column(JSON, default={})
+    reactions_total = Column(Integer, default=0)
+    
+    # Форварды
+    forwards = Column(Integer, default=0)
+    
+    # Когда обновлено
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
