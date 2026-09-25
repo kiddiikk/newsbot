@@ -96,6 +96,13 @@ async def start_command(message: Message, state: FSMContext, command: CommandObj
 
     is_admin = message.from_user.id in ADMIN_IDS
 
+        # 👇 Проверяем, Бизнес-тариф ли у юзера
+    db2 = SessionLocal()
+    user2 = get_or_create_user(db2, message.from_user.id)
+    plan = user2.subscription_plan or "start"
+    is_team_owner = (plan == "business")
+    db2.close()
+
     welcome_text = (
         "👋 <b>Привет! Я бот команды — FEEL IT - AI LAB</b>\n\n"
         "🤖 Я — твой личный контент-менеджер на автопилоте. "
@@ -121,9 +128,17 @@ async def start_command(message: Message, state: FSMContext, command: CommandObj
 async def back_to_main_menu(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     is_admin = callback.from_user.id in ADMIN_IDS
+
+    # 👇 Проверяем Бизнес-тариф
+    db = SessionLocal()
+    user = get_or_create_user(db, callback.from_user.id)
+    plan = user.subscription_plan or "start"
+    is_team_owner = (plan == "business")
+    db.close()
+
     await callback.message.edit_text(
         "Главное меню:",
-        reply_markup=keyboards.main_menu(is_admin=is_admin)
+        reply_markup=keyboards.main_menu(is_admin=is_admin, is_team_owner=is_team_owner)
     )
 
 
@@ -238,11 +253,6 @@ async def process_channel_topic(message: Message, state: FSMContext):
 
     channel = create_channel(
         db, user.telegram_id, data['channel_id'],
-        data['channel_name'], message.text
-    )
-
-    channel = create_channel(
-        db, user.telegram_id, data['channel_id'],  # ✅ ФИКС: user.id → user.telegram_id
         data['channel_name'], message.text
     )
 
@@ -1239,3 +1249,246 @@ async def check_trial_subscription(callback: CallbackQuery, bot: Bot):
             await callback.answer("❌ Вы не подписаны на канал!", show_alert=True)
     except Exception as e:
         await callback.answer(f"❌ Ошибка проверки: {str(e)[:50]}", show_alert=True)
+# ============================================================
+# КОМАНДНЫЙ ДОСТУП — UI
+# ============================================================
+
+@router.callback_query(F.data == "team")
+async def team_menu(callback: CallbackQuery):
+    from database.crud import get_team_members, count_active_team
+    from config.settings import SUBSCRIPTION_PRICES
+
+    user_id = callback.from_user.id
+    db = SessionLocal()
+    user = get_or_create_user(db, user_id)
+
+    # Проверка: Бизнес-тариф
+    plan = user.subscription_plan or "start"
+    if plan != "business" and user_id not in ADMIN_IDS:
+        await callback.answer(
+            "❌ Командный доступ доступен только в тарифе «Бизнес»",
+            show_alert=True
+        )
+        db.close()
+        return
+
+    # Лимит команды
+    max_team = SUBSCRIPTION_PRICES.get("business", {}).get("team_size", 5)
+    # TODO: учесть докупленные места
+    team_size = count_active_team(db, user_id)
+    db.close()
+
+    text = (
+        f"👥 <b>Команда</b>\n\n"
+        f"Участников: <b>{team_size}/{max_team}</b>\n\n"
+        f"Пригласи редактора — он получит доступ к твоим каналам "
+        f"в рамках прав, которые ты задашь."
+    )
+
+    await callback.message.edit_text(
+        text,
+        reply_markup=keyboards.team_menu(user_id, team_size, max_team),
+        parse_mode="HTML"
+    )
+
+
+@router.callback_query(F.data == "team_invite")
+async def team_invite(callback: CallbackQuery):
+    from database.crud import invite_team_member, count_active_team
+    from config.settings import SUBSCRIPTION_PRICES
+
+    user_id = callback.from_user.id
+    db = SessionLocal()
+
+    # Проверка лимита
+    max_team = SUBSCRIPTION_PRICES.get("business", {}).get("team_size", 5)
+    current = count_active_team(db, user_id)
+
+    if current >= max_team and user_id not in ADMIN_IDS:
+        await callback.answer(
+            f"❌ Лимит команды — {max_team}. Докупите место (скоро).",
+            show_alert=True
+        )
+        db.close()
+        return
+
+    # Создаём/получаем приглашение
+    invite = invite_team_member(db, user_id)
+    token = invite.invite_token
+    db.close()
+
+    link = f"https://t.me/feelit_ailab_bot?start=team_{token}"
+
+    text = (
+        f"👥 <b>Приглашение в команду</b>\n\n"
+        f"Отправь эту ссылку редактору:\n\n"
+        f"<code>{link}</code>\n\n"
+        f"Он нажмёт → станет редактором твоей команды.\n"
+        f"Права можно будет настроить после принятия."
+    )
+
+    keyboard = [
+        [InlineKeyboardButton(text="◀️ Назад", callback_data="team")]
+    ]
+
+    await callback.message.edit_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard),
+        parse_mode="HTML"
+    )
+
+
+@router.callback_query(F.data == "team_list")
+async def team_list(callback: CallbackQuery):
+    from database.crud import get_team_members
+
+    db = SessionLocal()
+    members = get_team_members(db, callback.from_user.id)
+    db.close()
+
+    if not members:
+        text = "👥 <b>Команда пуста</b>\n\nПригласи первого редактора."
+    else:
+        text = f"👥 <b>Команда ({len(members)})</b>\n\nВыбери участника:"
+
+    await callback.message.edit_text(
+        text,
+        reply_markup=keyboards.team_members_menu(members),
+        parse_mode="HTML"
+    )
+
+
+@router.callback_query(F.data.startswith("team_member_"))
+async def team_member_menu(callback: CallbackQuery):
+    team_id = int(callback.data.split("_")[2])
+
+    db = SessionLocal()
+    member = db.query(TeamMember).filter(TeamMember.id == team_id).first()
+    db.close()
+
+    if not member:
+        await callback.answer("Участник не найден!", show_alert=True)
+        return
+
+    # Проверка: этот участник — в моей команде?
+    if member.owner_id != callback.from_user.id and callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Нет доступа", show_alert=True)
+        return
+
+    name = f"@{member.member_id}" if member.member_id else f"id{member.member_id}"
+    role_label = "Админ" if member.role == "admin" else "Редактор"
+
+    text = (
+        f"👤 <b>Участник</b>\n\n"
+        f"ID: <code>{member.member_id}</code>\n"
+        f"Роль: <b>{role_label}</b>\n"
+        f"Добавлен: {member.accepted_at.strftime('%d.%m.%Y') if member.accepted_at else '—'}"
+    )
+
+    await callback.message.edit_text(
+        text,
+        reply_markup=keyboards.team_member_menu(team_id, member.member_id),
+        parse_mode="HTML"
+    )
+
+
+@router.callback_query(F.data.startswith("team_perms_"))
+async def team_perms_menu(callback: CallbackQuery):
+    team_id = int(callback.data.split("_")[2])
+
+    db = SessionLocal()
+    member = db.query(TeamMember).filter(TeamMember.id == team_id).first()
+    db.close()
+
+    if not member:
+        await callback.answer("Участник не найден!", show_alert=True)
+        return
+
+    if member.owner_id != callback.from_user.id and callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Нет доступа", show_alert=True)
+        return
+
+    await callback.message.edit_text(
+        f"⚙️ <b>Права редактора</b>\n\n"
+        f"Нажми, чтобы включить/выключить:",
+        reply_markup=keyboards.team_permissions_menu(team_id, member.permissions or {}),
+        parse_mode="HTML"
+    )
+
+
+@router.callback_query(F.data.startswith("team_perm_"))
+async def team_perm_toggle(callback: CallbackQuery):
+    parts = callback.data.split("_")
+    team_id = int(parts[2])
+    perm_key = parts[3]
+
+    db = SessionLocal()
+    member = db.query(TeamMember).filter(TeamMember.id == team_id).first()
+
+    if not member:
+        await callback.answer("Участник не найден!", show_alert=True)
+        db.close()
+        return
+
+    if member.owner_id != callback.from_user.id and callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Нет доступа", show_alert=True)
+        db.close()
+        return
+
+    current_perms = dict(member.permissions or {})
+    current_value = current_perms.get(perm_key, False)
+    new_value = not current_value
+
+    update_member_permission(db, team_id, perm_key, new_value)
+    db.close()
+
+    await callback.answer(f"{'Включено' if new_value else 'Выключено'}")
+
+    # Refresh
+    callback.data = f"team_perms_{team_id}"
+    await team_perms_menu(callback)
+
+
+@router.callback_query(F.data.startswith("team_remove_"))
+async def team_remove_confirm(callback: CallbackQuery):
+    team_id = int(callback.data.split("_")[2])
+
+    db = SessionLocal()
+    member = db.query(TeamMember).filter(TeamMember.id == team_id).first()
+    db.close()
+
+    if not member:
+        await callback.answer("Участник не найден!", show_alert=True)
+        return
+
+    await callback.message.edit_text(
+        f"🗑️ Удалить участника <code>{member.member_id}</code> из команды?",
+        reply_markup=keyboards.team_confirm_remove(team_id),
+        parse_mode="HTML"
+    )
+
+
+@router.callback_query(F.data.startswith("team_remove_confirm_"))
+async def team_remove_execute(callback: CallbackQuery):
+    team_id = int(callback.data.split("_")[3])
+
+    db = SessionLocal()
+    member = db.query(TeamMember).filter(TeamMember.id == team_id).first()
+
+    if not member:
+        await callback.answer("Участник не найден!", show_alert=True)
+        db.close()
+        return
+
+    if member.owner_id != callback.from_user.id and callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Нет доступа", show_alert=True)
+        db.close()
+        return
+
+    from database.crud import remove_team_member
+    remove_team_member(db, team_id)
+    db.close()
+
+    await callback.answer("Участник удалён")
+    callback.data = "team_list"
+    await team_list(callback)
