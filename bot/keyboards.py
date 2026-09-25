@@ -1,25 +1,33 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from typing import List, Optional
-from database.models import Post, RSSSource
+from database.models import Post, RSSSource, TeamMember
 from config.settings import AI_MODELS
 
 
 class Keyboards:
     @staticmethod
-    def main_menu(is_admin: bool = False):
+    def main_menu(is_admin: bool = False, is_team_owner: bool = False):
         keyboard = [
             [InlineKeyboardButton(text="📊 Мои каналы", callback_data="my_channels")],
             [InlineKeyboardButton(text="➕ Добавить канал", callback_data="add_channel")],
+        ]
+        
+        # 👇 Кнопка «Команда» — только для Бизнес-тарифа
+        if is_team_owner:
+            keyboard.append([InlineKeyboardButton(text="👥 Команда", callback_data="team")])
+        
+        keyboard.extend([
             [InlineKeyboardButton(text="🤖 Что я умею?", callback_data="what_i_can")],
             [InlineKeyboardButton(text="📢 Реклама/Сотрудничество", callback_data="contact")],
-        ]
+        ])
+        
         if not is_admin:
             keyboard.append([InlineKeyboardButton(text="💎 Подписка", callback_data="subscribe")])
+        
         return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
     @staticmethod
     def main_admin_menu():
-        # Оставлено для совместимости
         return Keyboards.main_menu(is_admin=True)
 
     @staticmethod
@@ -159,4 +167,81 @@ class Keyboards:
                 callback_data=f"pay_{plan_key}"
             )])
         keyboard.append([InlineKeyboardButton(text="◀️ Назад", callback_data="back_main")])
+        return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+    # ============================================================
+    # КОМАНДНЫЙ ДОСТУП
+    # ============================================================
+
+    @staticmethod
+    def team_menu(owner_id: int, team_size: int, max_team: int):
+        """Главный экран команды: пригласить + список."""
+        keyboard = [
+            [InlineKeyboardButton(
+                text=f"➕ Пригласить ({team_size}/{max_team})",
+                callback_data="team_invite"
+            )],
+            [InlineKeyboardButton(text="👥 Участники", callback_data="team_list")],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="back_main")],
+        ]
+        return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+    @staticmethod
+    def team_members_menu(members: List[TeamMember]):
+        """Список участников."""
+        keyboard = []
+        for m in members:
+            name = f"@{m.member_id}" if m.member_id else f"id{m.member_id}"
+            role = "👤 " + ("Админ" if m.role == "admin" else "Редактор")
+            keyboard.append([
+                InlineKeyboardButton(
+                    text=f"{role} {name}",
+                    callback_data=f"team_member_{m.id}"
+                )
+            ])
+
+        keyboard.append([InlineKeyboardButton(text="◀️ Назад", callback_data="team")])
+        return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+    @staticmethod
+    def team_member_menu(team_id: int, member_id: int):
+        """Карточка участника: права + удалить."""
+        keyboard = [
+            [InlineKeyboardButton(text="⚙️ Права", callback_data=f"team_perms_{team_id}")],
+            [InlineKeyboardButton(text="🗑️ Удалить", callback_data=f"team_remove_{team_id}")],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="team_list")],
+        ]
+        return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+    @staticmethod
+    def team_permissions_menu(team_id: int, permissions: dict):
+        """Чекбоксы прав editor'а."""
+        items = [
+            ("change_prompt", "📝 Менять промпт"),
+            ("moderate_posts", "✅ Модерировать посты"),
+            ("manage_rss", "📰 Управлять RSS"),
+            ("change_interval", "⏰ Менять интервал"),
+        ]
+        keyboard = []
+        for key, label in items:
+            value = permissions.get(key, False)
+            prefix = "✅ " if value else "❌ "
+            keyboard.append([
+                InlineKeyboardButton(
+                    text=prefix + label,
+                    callback_data=f"team_perm_{team_id}_{key}"
+                )
+            ])
+
+        keyboard.append([InlineKeyboardButton(text="◀️ Назад", callback_data=f"team_member_{team_id}")])
+        return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+    @staticmethod
+    def team_confirm_remove(team_id: int):
+        keyboard = [
+            [
+                InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"team_remove_confirm_{team_id}"),
+                InlineKeyboardButton(text="❌ Отмена", callback_data=f"team_member_{team_id}"),
+            ]
+        ]
         return InlineKeyboardMarkup(inline_keyboard=keyboard)
