@@ -545,7 +545,12 @@ class Scheduler:
                         from database.crud import get_channel_stats_comparison
                         comparison = get_channel_stats_comparison(db, channel.id)
 
-                        text = self._format_weekly_report(channel, stats, comparison)
+                        # 👇 AI-инсайты (только для бизнеса)
+                        insights = None
+                        if user.subscription_plan == "business":
+                            insights = await self.generate_ai_insights(db, channel, stats)
+
+                        text = self._format_weekly_report(channel, stats, comparison, insights)
                         await self.bot.send_message(
                             user.telegram_id,
                             text,
@@ -636,6 +641,12 @@ class Scheduler:
             )
             if reactions_str:
                 lines.append(f"\n✨ Лучший пост: {reactions_str}")
+
+        # 👇 AI-инсайты
+        if insights:
+            lines.append("")
+            lines.append("🧠 <b>AI-инсайты:</b>")
+            lines.append(insights)
 
         lines.append(f"\n💎 FEEL IT — AI LAB")
         return "\n".join(lines)
