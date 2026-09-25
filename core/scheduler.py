@@ -266,6 +266,13 @@ class Scheduler:
                             logger.error(f"Не удалось отправить пост на модерацию: {e}")
                         continue
 
+                    # 👇 ПРОВЕРКА ЛИМИТА ПОСТОВ/ДЕНЬ
+                    from database.crud import can_publish_post
+                    can, msg = can_publish_post(db, channel)
+                    if not can:
+                        logger.info(f"Канал {channel.channel_name}: {msg}")
+                        continue
+
                     message_id = await self.publisher.publish_post(
                         channel.channel_id,
                         post.processed_content,
