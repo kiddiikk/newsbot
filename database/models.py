@@ -104,3 +104,17 @@ class Post(Base):
     hash = Column(String, index=True, nullable=True)
 
     channel = relationship("Channel", back_populates="posts")
+
+class TeamMember(Base):
+    __tablename__ = "team_members"
+    __table_args__ = {'extend_existing': True}
+
+    id = Column(Integer, primary_key=True)
+    owner_id = Column(BigInteger, index=True)         # владелец (telegram_id)
+    member_id = Column(BigInteger, index=True)        # участник (telegram_id)
+    role = Column(String, default="editor")           # editor | admin
+    permissions = Column(JSON, default={})            # {"change_prompt": True, ...}
+    invite_token = Column(String, unique=True)
+    invited_at = Column(DateTime, default=datetime.utcnow)
+    accepted_at = Column(DateTime, nullable=True)
+    is_active = Column(Boolean, default=True)
