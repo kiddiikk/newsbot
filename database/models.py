@@ -8,6 +8,7 @@ from datetime import datetime
 from config.settings import DATABASE_URL, GRAMKIT_DATABASE_URL, DEFAULT_AI_MODEL
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy import text
+from sqlalchemy import UniqueConstraint
 
 Base = declarative_base()
 engine = create_engine(DATABASE_URL)
@@ -153,3 +154,17 @@ class PostMetric(Base):
     
     # Когда обновлено
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class ChannelStat(Base):
+    __tablename__ = "channel_stats"
+    __table_args__ = (
+        UniqueConstraint('channel_id', 'date', name='uix_channel_date'),
+        {'extend_existing': True},
+    )
+
+    id = Column(Integer, primary_key=True)
+    channel_id = Column(Integer, index=True)
+    date = Column(DateTime, index=True)
+    member_count = Column(Integer, default=0)
+    posts_count = Column(Integer, default=0)
+    reactions_total = Column(Integer, default=0)
