@@ -13,6 +13,9 @@ Base = declarative_base()
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)
 
+# Отдельный engine для чтения из gramkit (subscriptions)
+gramkit_engine = create_engine(GRAMKIT_DATABASE_URL)
+GramkitSessionLocal = sessionmaker(bind=gramkit_engine)
 
 class User(Base):
     __tablename__ = "users"
