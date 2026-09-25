@@ -6,6 +6,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///bot.db")
 ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "").split(",") if x]
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GRAMKIT_DATABASE_URL = os.getenv("GRAMKIT_DATABASE_URL", DATABASE_URL)
 
 RSS_CHECK_INTERVAL = 3600
 MAX_CHANNELS_PER_USER = 5
