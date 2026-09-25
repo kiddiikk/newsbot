@@ -5,7 +5,7 @@ from sqlalchemy import (
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
 from datetime import datetime
-from config.settings import DATABASE_URL, DEFAULT_AI_MODEL
+from config.settings import DATABASE_URL, GRAMKIT_DATABASE_URL, DEFAULT_AI_MODEL
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy import text
 
