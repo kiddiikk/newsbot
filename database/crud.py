@@ -211,3 +211,81 @@ def has_access(db: Session, channel_id: int, admin_ids: list) -> bool:
         return True
 
     return False
+# ============================================================
+# ПРОВЕРКА ЛИМИТОВ ПО ТАРИФУ
+# ============================================================
+
+from config.settings import SUBSCRIPTION_PRICES, ADMIN_IDS
+
+
+def get_user_plan(user) -> dict:
+    """Возвращает лимиты тарифа юзера. По умолчанию — start."""
+    plan_key = user.subscription_plan or "start"
+    return SUBSCRIPTION_PRICES.get(plan_key, SUBSCRIPTION_PRICES["start"])
+
+
+def can_add_channel(db: Session, user) -> tuple[bool, str]:
+    """Проверяет лимит каналов. Возвращает (можно, сообщение)."""
+    if user.telegram_id in ADMIN_IDS:
+        return True, ""
+
+    plan = get_user_plan(user)
+    max_channels = plan.get("channels", 1)
+    current = len(get_user_channels(db, user.telegram_id))
+
+    if current >= max_channels:
+        return False, (
+            f"❌ Лимит каналов для тарифа «{plan['name']}» — {max_channels}.\n"
+            f"Повысьте тариф в Mini App → Тарифы."
+        )
+    return True, ""
+
+
+def can_publish_post(db: Session, channel) -> tuple[bool, str]:
+    """Проверяет лимит постов/день для канала."""
+    owner = channel.owner
+    if owner.telegram_id in ADMIN_IDS:
+        return True, ""
+
+    plan = get_user_plan(owner)
+    max_posts = plan.get("posts_per_day", 5)
+
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    posts_today = db.query(Post).filter(
+        Post.channel_id == channel.id,
+        Post.published_time >= today_start,
+        Post.status == "published",
+    ).count()
+
+    if posts_today >= max_posts:
+        return False, f"Лимит постов/день ({max_posts}) для тарифа «{plan['name']}»"
+    return True, ""
+
+
+def can_use_feature(user, feature: str) -> bool:
+    """Проверяет доступ к фиче: moderation, custom_prompt, model_120b, analytics, priority_support."""
+    if user.telegram_id in ADMIN_IDS:
+        return True
+    plan = get_user_plan(user)
+    return bool(plan.get(feature, False))
+
+
+def can_use_model(user, model: str) -> bool:
+    """Проверяет доступ к модели (20b / 120b)."""
+    if user.telegram_id in ADMIN_IDS:
+        return True
+    plan = get_user_plan(user)
+    allowed = plan.get("models", [])
+    return model in allowed
+
+
+def can_add_team_member(db: Session, user) -> tuple[bool, str]:
+    """Проверяет лимит участников команды (для будущего командного доступа)."""
+    if user.telegram_id in ADMIN_IDS:
+        return True, ""
+    plan = get_user_plan(user)
+    max_team = plan.get("team_size", 0)
+    if max_team == 0:
+        return False, "❌ Командный доступ недоступен на вашем тарифе."
+    # TODO: подсчёт team_members, когда будет таблица
+    return True, ""
