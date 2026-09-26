@@ -1576,50 +1576,43 @@ async def team_buy_seat(callback: CallbackQuery):
 # АНАЛИТИКА — СБОР РЕАКЦИЙ
 # ============================================================
 
-@router.message_reaction()
-async def on_message_reaction(update):
-    """
-    Хендлер на реакции. Ловит реакции на постах в канале
-    и пишет метрики в БД.
-    """
-    from database.models import Post, PostMetric
+from aiogram.types import MessageReactionCountUpdated
+
+@router.message_reaction_count()
+async def on_reaction_count(update: MessageReactionCountUpdated):
+    """Хендлер счётчика реакций в канале."""
+    from database.models import Post
     from database.crud import update_reactions
-    # 👇 ЛОГИРУЕМ ВСЕ РЕАКЦИИ
-    logger.info(f"🔔 РЕАКЦИЯ: chat={update.chat.id}, msg_id={update.message_id}, new={update.new_reaction}")
+
+    logger.info(f"🔔 СЧЁТЧИК РЕАКЦИЙ: chat={update.chat.id}, msg_id={update.message_id}")
 
     try:
-        chat_id = update.chat.id
-        message_id = update.message_id
-
         db = SessionLocal()
         try:
             post = db.query(Post).filter(
-                Post.message_id == message_id,
+                Post.message_id == update.message_id,
                 Post.status == "published",
             ).first()
 
             if not post:
-                return  # db закроется в finally
+                logger.info(f"❌ Пост с message_id={update.message_id} не найден")
+                return
 
+            # 👇 Разбор реакций из update.reactions
             reactions = {}
-            if update.new_reaction:
-                for r in update.new_reaction:
-                    emoji = None
-                    if hasattr(r, 'emoji') and r.emoji:
-                        emoji = r.emoji
-                    elif hasattr(r, 'type') and r.type:
-                        emoji = r.type.value if hasattr(r.type, 'value') else str(r.type)
+            total = 0
+            for r in update.reactions:
+                # r.type.emoji — для обычных эмодзи
+                emoji = getattr(r.type, 'emoji', None) or 'custom'
+                reactions[emoji] = r.total_count
+                total += r.total_count
 
-                    if emoji:
-                        reactions[emoji] = reactions.get(emoji, 0) + 1
-
-            total = update_reactions(db, post.id, post.channel_id, reactions)
+            update_reactions(db, post.id, post.channel_id, reactions)
             logger.info(
-                f"Реакции обновлены: post={post.id}, "
+                f"✅ Реакции обновлены: post={post.id}, "
                 f"reactions={reactions}, total={total}"
             )
         finally:
             db.close()
-
     except Exception as e:
-        logger.error(f"Ошибка обработки реакции: {e}", exc_info=True)
+        logger.error(f"Ошибка счётчика реакций: {e}", exc_info=True)
