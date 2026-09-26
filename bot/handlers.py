@@ -45,6 +45,35 @@ async def start_command(message: Message, state: FSMContext, command: CommandObj
         user.is_admin = True
         db.commit()
 
+        # 👇 ПРОВЕРКА РЕФЕРАЛЬНОЙ ССЫЛКИ
+    args = command.args if command else None
+    if args and args.startswith("ref_"):
+        try:
+            inviter_id = int(args[4:])  # "ref_123456" → 123456
+        except ValueError:
+            inviter_id = None
+
+        if inviter_id and inviter_id != message.from_user.id:
+            from database.crud import register_referral
+            created = register_referral(db, inviter_id, message.from_user.id)
+            if created:
+                logger.info(
+                    f"Реферал зарегистрирован: inviter={inviter_id}, "
+                    f"invited={message.from_user.id}"
+                )
+                # Уведомляем пригласившего
+                try:
+                    inviter = db.query(User).filter(User.telegram_id == inviter_id).first()
+                    if inviter:
+                        inviter_name = f"@{inviter.username}" if inviter.username else f"id{inviter_id}"
+                        await message.bot.send_message(
+                            inviter_id,
+                            f"🎉 По твоей ссылке пришёл новый юзер!\n"
+                            f"Всего рефералов: {get_referrals_count(db, inviter_id)['total']}",
+                        )
+                except Exception as e:
+                    logger.warning(f"Не удалось уведомить inviter: {e}")
+
     # 👇 ПРОВЕРКА ИНВАЙТ-ТОКЕНА
     args = command.args if command else None
     if args and args.startswith("team_"):
