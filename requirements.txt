@@ -1,4 +1,4 @@
-aiogram>=3.13.0
+aiogram
 g4f
 feedparser
 apscheduler
