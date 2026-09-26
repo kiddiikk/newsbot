@@ -168,3 +168,13 @@ class ChannelStat(Base):
     member_count = Column(Integer, default=0)
     posts_count = Column(Integer, default=0)
     reactions_total = Column(Integer, default=0)
+
+class Referral(Base):
+    __tablename__ = "referrals"
+    __table_args__ = {'extend_existing': True}
+
+    id = Column(Integer, primary_key=True)
+    inviter_id = Column(BigInteger, index=True)   # кто пригласил (telegram_id)
+    invited_id = Column(BigInteger, unique=True)  # кого пригласили (telegram_id)
+    invited_at = Column(DateTime, default=datetime.utcnow)
+    is_active = Column(Boolean, default=True)     # подписка активна?
