@@ -1584,6 +1584,8 @@ async def on_message_reaction(update):
     """
     from database.models import Post, PostMetric
     from database.crud import update_reactions
+    # 👇 ЛОГИРУЕМ ВСЕ РЕАКЦИИ
+    logger.info(f"🔔 РЕАКЦИЯ: chat={update.chat.id}, msg_id={update.message_id}, new={update.new_reaction}")
 
     try:
         chat_id = update.chat.id
