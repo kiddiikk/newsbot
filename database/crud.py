@@ -755,3 +755,74 @@ def get_channel_stats_comparison(db: Session, channel_id: int) -> dict:
             "growth": members_growth,
         },
     }
+
+# ============================================================
+# РЕФЕРАЛЫ
+# ============================================================
+
+def register_referral(db: Session, inviter_id: int, invited_id: int) -> bool:
+    """
+    Регистрирует реферала. Возвращает True если создан, False если уже был.
+    """
+    from database.models import Referral
+
+    if inviter_id == invited_id:
+        return False
+
+    existing = db.query(Referral).filter(
+        Referral.invited_id == invited_id,
+    ).first()
+    if existing:
+        return False
+
+    ref = Referral(
+        inviter_id=inviter_id,
+        invited_id=invited_id,
+        is_active=False,  # станет True, когда юзер что-то сделает
+    )
+    db.add(ref)
+    db.commit()
+    return True
+
+
+def get_referrals(db: Session, inviter_id: int) -> list:
+    """Список рефералов (все, кого пригласил)."""
+    from database.models import Referral
+
+    return db.query(Referral).filter(
+        Referral.inviter_id == inviter_id,
+    ).order_by(Referral.invited_at.desc()).all()
+
+
+def get_referrals_count(db: Session, inviter_id: int) -> dict:
+    """Статистика рефералов."""
+    from database.models import Referral
+
+    all_refs = db.query(Referral).filter(
+        Referral.inviter_id == inviter_id,
+    ).all()
+
+    total = len(all_refs)
+    active = sum(1 for r in all_refs if r.is_active)
+
+    return {
+        "total": total,
+        "active": active,
+    }
+
+
+def mark_referral_active(db: Session, invited_id: int) -> bool:
+    """Помечает реферала как активного (например, когда оплатил)."""
+    from database.models import Referral
+
+    ref = db.query(Referral).filter(Referral.invited_id == invited_id).first()
+    if ref and not ref.is_active:
+        ref.is_active = True
+        db.commit()
+        return True
+    return False
+
+
+def get_referral_link(bot_username: str, inviter_id: int) -> str:
+    """Возвращает реферальную ссылку."""
+    return f"https://t.me/{bot_username}?start=ref_{inviter_id}"
