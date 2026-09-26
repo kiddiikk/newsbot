@@ -1591,32 +1591,26 @@ async def on_message_reaction(update):
 
         db = SessionLocal()
         try:
-            # Ищем пост в БД по message_id
             post = db.query(Post).filter(
                 Post.message_id == message_id,
                 Post.status == "published",
             ).first()
 
             if not post:
-                # Это не наш пост — игнорим
-                return
+                return  # db закроется в finally
 
-            # Считаем новые реакции
             reactions = {}
             if update.new_reaction:
                 for r in update.new_reaction:
                     emoji = None
-                    # Custom emoji
                     if hasattr(r, 'emoji') and r.emoji:
                         emoji = r.emoji
-                    # Standard emoji (тип)
                     elif hasattr(r, 'type') and r.type:
                         emoji = r.type.value if hasattr(r.type, 'value') else str(r.type)
-                    
+
                     if emoji:
                         reactions[emoji] = reactions.get(emoji, 0) + 1
 
-            # Обновляем метрику
             total = update_reactions(db, post.id, post.channel_id, reactions)
             logger.info(
                 f"Реакции обновлены: post={post.id}, "
